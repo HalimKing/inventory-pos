@@ -46,10 +46,10 @@ class ProductController extends Controller
         ]);
 
         // Upload image
-       try{
-           
-           $product = new Product();
-        
+        try {
+
+            $product = new Product();
+
             $product->name = $request->name;
             $product->category_id = $request->category;
             $product->supplier_id = $request->supplier;
@@ -75,8 +75,8 @@ class ProductController extends Controller
             $product->save();
 
             return redirect()->route('admin.products.index')
-            ->with('success', 'Product created Successfully!');
-       }catch(\Exception $e){
+                ->with('success', 'Product created Successfully!');
+        } catch (\Exception $e) {
             Log::error($e->getMessage());
             // dd($e->getMessage());
             // delete image
@@ -84,8 +84,8 @@ class ProductController extends Controller
                 unlink(public_path('images/' . $request->image));
             }
             return redirect()->route('admin.products.index')
-            ->with('error', 'Something went wrong!');
-       }
+                ->with('error', 'Something went wrong!');
+        }
     }
 
     /**
@@ -136,11 +136,8 @@ class ProductController extends Controller
 
 
         if ($request->hasFile('image')) {
-            // delete image from the storage
-            if (file_exists(public_path('storage/' . $product->product_image))) {
-                unlink(public_path('storage/' . $product->product_image));
-            }
-            
+            $this->deleteProductImageIfExists($product->product_image);
+
             $image = $request->file('image');
             $path = $image->store('images', 'public'); // stores in storage/app/public/images
             $product->product_image = $path;
@@ -149,7 +146,7 @@ class ProductController extends Controller
         $product->save();
 
         return redirect()->route('admin.products.index')
-        ->with('success', 'Product updated Successfully!');
+            ->with('success', 'Product updated Successfully!');
     }
 
     /**
@@ -159,17 +156,29 @@ class ProductController extends Controller
     {
         //
         // delete image
-        try{
-            if (file_exists(public_path('storage/' . $product->product_image))) {
-                    unlink(public_path('storage/' . $product->product_image));
-                }
+        try {
+            $this->deleteProductImageIfExists($product->product_image);
+
             $product->delete();
+
             return response()->json(['message' => 'Product deleted successfully.']);
-        }catch(\Exception $e){
+        } catch (\Exception $e) {
             Log::error($e->getMessage());
             return response()->json(['error' => 'Something went wrong.'], 500);
         }
-       
+    }
+
+    private function deleteProductImageIfExists(?string $relativePath): void
+    {
+        if (empty($relativePath)) {
+            return;
+        }
+
+        $fullPath = public_path('storage/' . ltrim($relativePath, '/'));
+
+        if (is_file($fullPath)) {
+            unlink($fullPath);
+        }
     }
 
     private function fetchProducts()

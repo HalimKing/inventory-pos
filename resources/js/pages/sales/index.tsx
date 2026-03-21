@@ -1,90 +1,86 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  Search, 
-  ShoppingCart, 
-  Trash2, 
-  Plus, 
-  Minus, 
-  CreditCard, 
-  DollarSign,
-  X,
-  Check,
-  Printer,
-  Percent,
-  Loader2
-} from 'lucide-react';
 import AppLayout from '@/layouts/app-layout';
+import { BreadcrumbItem, SharedData } from '@/types';
 import { Head, usePage } from '@inertiajs/react';
-import { BreadcrumbItem } from '@/types';
 import axios from 'axios';
+import {
+    Check,
+    CreditCard,
+    DollarSign,
+    Loader2,
+    Minus,
+    Percent,
+    Plus,
+    Printer,
+    Search,
+    ShoppingCart,
+    Trash2,
+} from 'lucide-react';
+import React, { useEffect, useState } from 'react';
 
 // Shadcn Components
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Separator } from '@/components/ui/separator';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardTitle } from '@/components/ui/card';
+import {
+    Dialog,
+    DialogContent,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { 
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+import { Separator } from '@/components/ui/separator';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 interface Product {
-  id: string;
-  name: string;
-  price: number;
-  category: string;
-  stock: number;
-  barcode: string;
-  image?: string;
+    id: string;
+    name: string;
+    price: number;
+    category: string;
+    stock: number;
+    barcode: string;
+    image?: string;
 }
 
 interface CompanySettings {
-  logo?: string;
-  company_name?: string;
-  address?: string;
-  phone?: string;
-  email?: string;
-  website?: string;
-  return_policy?: string;
-  thank_you_message?: string;
+    logo?: string;
+    company_name?: string;
+    address?: string;
+    phone?: string;
+    email?: string;
+    website?: string;
+    return_policy?: string;
+    thank_you_message?: string;
 }
 
 interface SalesProps {
-  productsData: Product[];
-  companySettings: CompanySettings;
+    productsData: Product[];
+    companySettings: CompanySettings;
 }
 
 interface CartItem extends Product {
-  quantity: number;
+    quantity: number;
 }
 
 interface TransactionData {
-  items: Array<{
-    product_id: string;
-    quantity: number;
-    price: number;
+    items: Array<{
+        product_id: string;
+        quantity: number;
+        price: number;
+        subtotal: number;
+        name: string;
+    }>;
+    customer_name: string;
     subtotal: number;
-    name: string;
-  }>;
-  customer_name: string;
-  subtotal: number;
-  discount_percentage?: number;
-  discount_amount: number;
-  total_amount: number;
-  payment_method: 'cash' | 'card';
-  amount_received: number;
-  change_amount: number;
-  transaction_id?: string;
-  date?: string;
+    discount_percentage?: number;
+    discount_amount: number;
+    total_amount: number;
+    payment_method: 'cash' | 'card';
+    amount_received: number;
+    change_amount: number;
+    transaction_id?: string;
+    date?: string;
 }
 
 // Helper functions for localStorage
@@ -93,303 +89,343 @@ const CUSTOMER_STORAGE_KEY = 'pos_customer_name';
 const DISCOUNT_STORAGE_KEY = 'pos_discount';
 
 const loadCartFromStorage = (availableProducts: Product[]): CartItem[] => {
-  try {
-    const storedCart = localStorage.getItem(CART_STORAGE_KEY);
-    if (!storedCart) return [];
-    
-    const parsedCart = JSON.parse(storedCart);
-    
-    // Validate and filter cart items against available products
-    const validCart = parsedCart.filter((cartItem: CartItem) => {
-      const productExists = availableProducts.find(p => p.id === cartItem.id);
-      return productExists && cartItem.quantity > 0;
-    });
-    
-    console.log('Loaded cart from storage:', validCart);
-    return validCart;
-  } catch (error) {
-    console.error('Error loading cart from storage:', error);
-    return [];
-  }
+    try {
+        const storedCart = localStorage.getItem(CART_STORAGE_KEY);
+        if (!storedCart) return [];
+
+        const parsedCart = JSON.parse(storedCart);
+
+        // Validate and filter cart items against available products
+        const validCart = parsedCart.filter((cartItem: CartItem) => {
+            const productExists = availableProducts.find(
+                (p) => p.id === cartItem.id,
+            );
+            return productExists && cartItem.quantity > 0;
+        });
+
+        // console.log('Loaded cart from storage:', validCart);
+        return validCart;
+    } catch (error) {
+        console.error('Error loading cart from storage:', error);
+        return [];
+    }
 };
 
 const saveCartToStorage = (cart: CartItem[]) => {
-  try {
-    localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cart));
-    console.log('Saved cart to storage:', cart);
-  } catch (error) {
-    console.error('Error saving cart to storage:', error);
-  }
+    try {
+        localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cart));
+        console.log('Saved cart to storage:', cart);
+    } catch (error) {
+        console.error('Error saving cart to storage:', error);
+    }
 };
 
 const loadCustomerNameFromStorage = (): string => {
-  try {
-    return localStorage.getItem(CUSTOMER_STORAGE_KEY) || '';
-  } catch (error) {
-    console.error('Error loading customer name from storage:', error);
-    return '';
-  }
+    try {
+        return localStorage.getItem(CUSTOMER_STORAGE_KEY) || '';
+    } catch (error) {
+        console.error('Error loading customer name from storage:', error);
+        return '';
+    }
 };
 
 const saveCustomerNameToStorage = (name: string) => {
-  try {
-    localStorage.setItem(CUSTOMER_STORAGE_KEY, name);
-  } catch (error) {
-    console.error('Error saving customer name to storage:', error);
-  }
+    try {
+        localStorage.setItem(CUSTOMER_STORAGE_KEY, name);
+    } catch (error) {
+        console.error('Error saving customer name to storage:', error);
+    }
 };
 
 const loadDiscountFromStorage = (): number => {
-  try {
-    const discount = localStorage.getItem(DISCOUNT_STORAGE_KEY);
-    return discount ? parseFloat(discount) : 0;
-  } catch (error) {
-    console.error('Error loading discount from storage:', error);
-    return 0;
-  }
+    try {
+        const discount = localStorage.getItem(DISCOUNT_STORAGE_KEY);
+        return discount ? parseFloat(discount) : 0;
+    } catch (error) {
+        console.error('Error loading discount from storage:', error);
+        return 0;
+    }
 };
 
 const saveDiscountToStorage = (discount: number) => {
-  try {
-    localStorage.setItem(DISCOUNT_STORAGE_KEY, discount.toString());
-  } catch (error) {
-    console.error('Error saving discount to storage:', error);
-  }
+    try {
+        localStorage.setItem(DISCOUNT_STORAGE_KEY, discount.toString());
+    } catch (error) {
+        console.error('Error saving discount to storage:', error);
+    }
 };
 
-const POSCashierInterface: React.FC<SalesProps> = ({ productsData, companySettings }) => {
-  const [cart, setCart] = useState<CartItem[]>([]);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('All');
-  const [discount, setDiscount] = useState(0);
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | null>(null);
-  const [amountReceived, setAmountReceived] = useState('');
-  const [customerName, setCustomerName] = useState('');
-  const [allCategories, setAllCategories] = useState<string[]>(['All']);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [lastTransaction, setLastTransaction] = useState<TransactionData | null>(null);
-  const [showReceiptModal, setShowReceiptModal] = useState(false);
-  const [isCartLoaded, setIsCartLoaded] = useState(false);
-  const [allProducts, setAllProducts] = useState<Product[]>(productsData);
-    const { auth } = usePage().props;
+const POSCashierInterface: React.FC<SalesProps> = ({
+    productsData,
+    companySettings,
+}) => {
+    // console.log('Initial products data:', productsData);
+    const [cart, setCart] = useState<CartItem[]>([]);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [selectedCategory, setSelectedCategory] = useState('All');
+    const [discount, setDiscount] = useState(0);
+    const [showPaymentModal, setShowPaymentModal] = useState(false);
+    const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | null>(
+        null,
+    );
+    const [amountReceived, setAmountReceived] = useState('');
+    const [customerName, setCustomerName] = useState('');
+    const [allCategories, setAllCategories] = useState<string[]>(['All']);
+    const [isProcessing, setIsProcessing] = useState(false);
+    const [lastTransaction, setLastTransaction] =
+        useState<TransactionData | null>(null);
+    const [showReceiptModal, setShowReceiptModal] = useState(false);
+    const [isCartLoaded, setIsCartLoaded] = useState(false);
+    const [allProducts, setAllProducts] = useState<Product[]>(productsData);
+    const { auth } = usePage<SharedData>().props;
 
-  // Load data from localStorage after productsData is available
-  useEffect(() => {
-    if (allProducts && productsData.length > 0 && !isCartLoaded) {
-      const savedCart = loadCartFromStorage(allProducts);
-      const savedCustomerName = loadCustomerNameFromStorage();
-      const savedDiscount = loadDiscountFromStorage();
-      
-      setCart(savedCart);
-      setCustomerName(savedCustomerName);
-      setDiscount(savedDiscount);
-      setIsCartLoaded(true);
-      
-    }
-  }, [allProducts, isCartLoaded]);
+    // Load data from localStorage after productsData is available
+    useEffect(() => {
+        if (allProducts && productsData.length > 0 && !isCartLoaded) {
+            const savedCart = loadCartFromStorage(allProducts);
+            const savedCustomerName = loadCustomerNameFromStorage();
+            const savedDiscount = loadDiscountFromStorage();
 
-  // Save cart to localStorage whenever cart changes
-  useEffect(() => {
-    if (isCartLoaded && cart.length > 0) {
-      saveCartToStorage(cart);
-    }
-  }, [cart, isCartLoaded]);
-
-  // Save customer name to localStorage whenever it changes
-  useEffect(() => {
-    if (isCartLoaded) {
-      saveCustomerNameToStorage(customerName);
-    }
-  }, [customerName, isCartLoaded]);
-
-  // Save discount to localStorage whenever it changes
-  useEffect(() => {
-    if (isCartLoaded) {
-      saveDiscountToStorage(discount);
-    }
-  }, [discount, isCartLoaded]);
-
-  const filteredProducts = allProducts.filter(product => {
-    const matchesSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory = selectedCategory === 'All' || product.category === selectedCategory;
-    return matchesSearch && matchesCategory;
-  });
-
-
-
-  useEffect(() => {
-    var url = '';
-    if (auth.user?.role_id === 3) {
-      url = '/cashier/sales/products/fetch-all-products';
-    } else {
-      url = '/admin/sales/products/fetch-all-products';
-    }
-   
-    axios.get(url)
-      .then(response => {
-        const categories: string[] = ['All'];
-        response.data.forEach((category: any) => {
-          categories.push(category.label);
-        });
-        setAllCategories(categories);
-      })
-      .catch(error => {
-        console.error('Error fetching categories:', error);
-      });
-  }, []);
-
-  const addToCart = (product: Product) => {
-    const existingItem = cart.find(item => item.id === product.id);
-    
-    if (existingItem) {
-      if (existingItem.quantity < product.stock) {
-        const updatedCart = cart.map(item =>
-          item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
-        );
-        setCart(updatedCart);
-      }
-    } else {
-      const updatedCart = [...cart, { ...product, quantity: 1 }];
-      setCart(updatedCart);
-    }
-  };
-
-  const removeFromCart = (productId: string) => {
-    const updatedCart = cart.filter(item => item.id !== productId);
-    setCart(updatedCart);
-  };
-
-  const updateQuantity = (productId: string, newQuantity: number) => {
-    const product = allProducts.find(p => p.id === productId);
-    if (newQuantity <= 0) {
-      removeFromCart(productId);
-    } else if (product && newQuantity <= product.stock) {
-      const updatedCart = cart.map(item =>
-        item.id === productId ? { ...item, quantity: newQuantity } : item
-      );
-      setCart(updatedCart);
-    }
-  };
-
-  const calculateSubtotal = () => {
-    return cart.reduce((sum, item) => {
-      const price = typeof item.price === 'string' ? parseFloat(item.price) : item.price;
-      return sum + (price * item.quantity);
-    }, 0);
-  };
-
-  const calculateDiscount = () => {
-    return (calculateSubtotal() * discount) / 100;
-  };
-
-  const calculateTotal = () => {
-    return calculateSubtotal() - calculateDiscount();
-  };
-
-  const calculateChange = () => {
-    const received = parseFloat(amountReceived) || 0;
-    return received - calculateTotal();
-  };
-
-  const clearCart = () => {
-    setCart([]);
-    setDiscount(0);
-    setCustomerName('');
-    setSearchQuery('');
-    // Also clear from localStorage
-    localStorage.removeItem(CART_STORAGE_KEY);
-    localStorage.removeItem(CUSTOMER_STORAGE_KEY);
-    localStorage.removeItem(DISCOUNT_STORAGE_KEY);
-    console.log('Cart cleared from storage');
-  };
-
-  const handlePayment = () => {
-    if (cart.length === 0) return;
-    setShowPaymentModal(true);
-  };
-
-  const saveTransaction = async (): Promise<{ success: boolean; transaction?: TransactionData }> => {
-    try {
-      const transactionData: TransactionData = {
-        items: cart.map(item => ({
-          product_id: item.id,
-          quantity: item.quantity,
-          price: typeof item.price === 'string' ? parseFloat(item.price) : item.price,
-          subtotal: (typeof item.price === 'string' ? parseFloat(item.price) : item.price) * item.quantity,
-          name: item.name
-        })),
-        customer_name: customerName || 'Walk-in Customer',
-        subtotal: calculateSubtotal(),
-        discount_amount: calculateDiscount(),
-        discount_percentage: discount,
-        total_amount: calculateTotal(),
-        payment_method: paymentMethod!,
-        amount_received: parseFloat(amountReceived) || calculateTotal(),
-        change_amount: paymentMethod === 'cash' ? calculateChange() : 0,
-        transaction_id: `TXN-${Date.now()}`
-      };
-
-      var transactionUrl = '';
-      if (auth.user?.role_id === 3) {
-        transactionUrl = '/cashier/sales/save/transaction';
-      } else {
-        transactionUrl = '/admin/sales/save/transaction';
-      }
-
-      const response = await axios.post(transactionUrl, transactionData, {
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
+            setCart(savedCart);
+            setCustomerName(savedCustomerName);
+            setDiscount(savedDiscount);
+            setIsCartLoaded(true);
         }
-      });
+    }, [allProducts, isCartLoaded]);
 
-      if (response.status === 200) {
-        console.log('Transaction saved successfully:', response.data);
-        
-        const savedTransaction = {
-          ...transactionData,
-          transaction_id: response.data.transaction_id || transactionData.transaction_id,
-          date: new Date().toLocaleString()
-        };
-        
-        return { success: true, transaction: savedTransaction };
-      } else {
-        console.error('Failed to save transaction:', response.data);
-        return { success: false };
-      }
-    } catch (error) {
-      console.error('Error saving transaction:', error);
-      return { success: false };
-    }
-  };
+    // Save cart to localStorage whenever cart changes
+    useEffect(() => {
+        if (isCartLoaded && cart.length > 0) {
+            saveCartToStorage(cart);
+        }
+    }, [cart, isCartLoaded]);
 
-  const fetchProducts = async () => {
-    var url = '';
-    if (auth.user?.role_id === 3) {
-      url = '/cashier/sales/products/fetch-all-products';
-    } else {
-      url = '/admin/sales/products/fetch-all-products';
-    }
-    try {
-      const response = await axios.get(url);
-      console.log('raw response', response.data);
-      setAllProducts(response.data);
-    } catch (error) {
-      console.error('Fetching Error', error);
-    }
-  };
+    // Save customer name to localStorage whenever it changes
+    useEffect(() => {
+        if (isCartLoaded) {
+            saveCustomerNameToStorage(customerName);
+        }
+    }, [customerName, isCartLoaded]);
 
-  const printReceipt = (transaction: TransactionData) => {
-    const receiptWindow = window.open('', '_blank');
-    if (receiptWindow) {
-      
-      const formatPrice = (price: any): string => {
-        const num = typeof price === 'string' ? parseFloat(price) : price;
-        return isNaN(num) ? '0.00' : num.toFixed(2);
-      };
+    // Save discount to localStorage whenever it changes
+    useEffect(() => {
+        if (isCartLoaded) {
+            saveDiscountToStorage(discount);
+        }
+    }, [discount, isCartLoaded]);
 
-      const receiptContent = `
+    const filteredProducts = allProducts.filter((product) => {
+        const matchesSearch = product.name
+            .toLowerCase()
+            .includes(searchQuery.toLowerCase());
+        const matchesCategory =
+            selectedCategory === 'All' || product.category === selectedCategory;
+        return matchesSearch && matchesCategory;
+    });
+
+    useEffect(() => {
+        var url = '';
+        if (auth.user?.role_id === 3) {
+            url = '/cashier/sales/products/fetch-all-products';
+        } else {
+            url = '/admin/sales/products/fetch-all-products';
+        }
+
+        axios
+            .get(url)
+            .then((response) => {
+                const categorySet = new Set<string>(['All']);
+
+                response.data.forEach((item: any) => {
+                    const categoryName = item?.category ?? item?.label;
+                    if (
+                        typeof categoryName === 'string' &&
+                        categoryName.trim()
+                    ) {
+                        categorySet.add(categoryName);
+                    }
+                });
+
+                setAllCategories(Array.from(categorySet));
+            })
+            .catch((error) => {
+                console.error('Error fetching categories:', error);
+            });
+    }, []);
+
+
+    const addToCart = (product: Product) => {
+        const existingItem = cart.find((item) => item.id === product.id);
+
+        if (existingItem) {
+            if (existingItem.quantity < product.stock) {
+                const updatedCart = cart.map((item) =>
+                    item.id === product.id
+                        ? { ...item, quantity: item.quantity + 1 }
+                        : item,
+                );
+                setCart(updatedCart);
+            }
+        } else {
+            const updatedCart = [...cart, { ...product, quantity: 1 }];
+            setCart(updatedCart);
+        }
+    };
+
+    const removeFromCart = (productId: string) => {
+        const updatedCart = cart.filter((item) => item.id !== productId);
+        setCart(updatedCart);
+    };
+
+    const updateQuantity = (productId: string, newQuantity: number) => {
+        const product = allProducts.find((p) => p.id === productId);
+        if (newQuantity <= 0) {
+            removeFromCart(productId);
+        } else if (product && newQuantity <= product.stock) {
+            const updatedCart = cart.map((item) =>
+                item.id === productId
+                    ? { ...item, quantity: newQuantity }
+                    : item,
+            );
+            setCart(updatedCart);
+        }
+    };
+
+    const calculateSubtotal = () => {
+        return cart.reduce((sum, item) => {
+            const price =
+                typeof item.price === 'string'
+                    ? parseFloat(item.price)
+                    : item.price;
+            return sum + price * item.quantity;
+        }, 0);
+    };
+
+    const calculateDiscount = () => {
+        return (calculateSubtotal() * discount) / 100;
+    };
+
+    const calculateTotal = () => {
+        return calculateSubtotal() - calculateDiscount();
+    };
+
+    const calculateChange = () => {
+        const received = parseFloat(amountReceived) || 0;
+        return received - calculateTotal();
+    };
+
+    const clearCart = () => {
+        setCart([]);
+        setDiscount(0);
+        setCustomerName('');
+        setSearchQuery('');
+        // Also clear from localStorage
+        localStorage.removeItem(CART_STORAGE_KEY);
+        localStorage.removeItem(CUSTOMER_STORAGE_KEY);
+        localStorage.removeItem(DISCOUNT_STORAGE_KEY);
+        console.log('Cart cleared from storage');
+    };
+
+    const handlePayment = () => {
+        if (cart.length === 0) return;
+        setShowPaymentModal(true);
+    };
+
+    const saveTransaction = async (): Promise<{
+        success: boolean;
+        transaction?: TransactionData;
+    }> => {
+        try {
+            const transactionData: TransactionData = {
+                items: cart.map((item) => ({
+                    product_id: item.id,
+                    quantity: item.quantity,
+                    price:
+                        typeof item.price === 'string'
+                            ? parseFloat(item.price)
+                            : item.price,
+                    subtotal:
+                        (typeof item.price === 'string'
+                            ? parseFloat(item.price)
+                            : item.price) * item.quantity,
+                    name: item.name,
+                })),
+                customer_name: customerName || 'Walk-in Customer',
+                subtotal: calculateSubtotal(),
+                discount_amount: calculateDiscount(),
+                discount_percentage: discount,
+                total_amount: calculateTotal(),
+                payment_method: paymentMethod!,
+                amount_received: parseFloat(amountReceived) || calculateTotal(),
+                change_amount: paymentMethod === 'cash' ? calculateChange() : 0,
+                transaction_id: `TXN-${Date.now()}`,
+            };
+
+            var transactionUrl = '';
+            if (auth.user?.role_id === 3) {
+                transactionUrl = '/cashier/sales/save/transaction';
+            } else {
+                transactionUrl = '/admin/sales/save/transaction';
+            }
+
+            const response = await axios.post(transactionUrl, transactionData, {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN':
+                        document
+                            .querySelector('meta[name="csrf-token"]')
+                            ?.getAttribute('content') || '',
+                },
+            });
+
+            if (response.status === 200) {
+                console.log('Transaction saved successfully:', response.data);
+
+                const savedTransaction = {
+                    ...transactionData,
+                    transaction_id:
+                        response.data.transaction_id ||
+                        transactionData.transaction_id,
+                    date: new Date().toLocaleString(),
+                };
+
+                return { success: true, transaction: savedTransaction };
+            } else {
+                console.error('Failed to save transaction:', response.data);
+                return { success: false };
+            }
+        } catch (error) {
+            console.error('Error saving transaction:', error);
+            return { success: false };
+        }
+    };
+
+    const fetchProducts = async () => {
+        var url = '';
+        if (auth.user?.role_id === 3) {
+            url = '/cashier/sales/products/fetch-all-products';
+        } else {
+            url = '/admin/sales/products/fetch-all-products';
+        }
+        try {
+            const response = await axios.get(url);
+            console.log('raw response', response.data);
+            setAllProducts(response.data);
+        } catch (error) {
+            console.error('Fetching Error', error);
+        }
+    };
+
+    const printReceipt = (transaction: TransactionData) => {
+        const receiptWindow = window.open('', '_blank');
+        if (receiptWindow) {
+            const formatPrice = (price: any): string => {
+                const num =
+                    typeof price === 'string' ? parseFloat(price) : price;
+                return isNaN(num) ? '0.00' : num.toFixed(2);
+            };
+
+            const receiptContent = `
       <!DOCTYPE html>
       <html>
         <head>
@@ -548,13 +584,17 @@ const POSCashierInterface: React.FC<SalesProps> = ({ productsData, companySettin
             </div>
             
             <!-- Items List -->
-            ${transaction.items.map(item => `
+            ${transaction.items
+                .map(
+                    (item) => `
               <div class="line">
                 <span style="flex: 2; text-align: left;">${item.name}</span>
                 <span style="flex: 1; text-align: center;">${item.quantity} x GHS${formatPrice(item.price)}</span>
                 <span style="flex: 1; text-align: right;">GHS${formatPrice(item.subtotal)}</span>
               </div>
-            `).join('')}
+            `,
+                )
+                .join('')}
             
             <!-- Totals Section -->
             <div class="line">
@@ -562,12 +602,17 @@ const POSCashierInterface: React.FC<SalesProps> = ({ productsData, companySettin
               <span>GHS${formatPrice(transaction.subtotal)}</span>
             </div>
             
-            ${transaction.discount_percentage && transaction.discount_percentage > 0 ? `
+            ${
+                transaction.discount_percentage &&
+                transaction.discount_percentage > 0
+                    ? `
               <div class="line">
                 <span>Discount (${transaction.discount_percentage}%):</span>
                 <span>-GHS${formatPrice(transaction.discount_amount)}</span>
               </div>
-            ` : ''}
+            `
+                    : ''
+            }
             
             <div class="line total-line">
               <span>TOTAL:</span>
@@ -580,7 +625,9 @@ const POSCashierInterface: React.FC<SalesProps> = ({ productsData, companySettin
               <span>${transaction.payment_method.toUpperCase()}</span>
             </div>
             
-            ${transaction.payment_method === 'cash' ? `
+            ${
+                transaction.payment_method === 'cash'
+                    ? `
               <div class="line">
                 <span>Amount Received:</span>
                 <span>GHS${formatPrice(transaction.amount_received)}</span>
@@ -589,7 +636,9 @@ const POSCashierInterface: React.FC<SalesProps> = ({ productsData, companySettin
                 <span>Change:</span>
                 <span>GHS${formatPrice(transaction.change_amount)}</span>
               </div>
-            ` : ''}
+            `
+                    : ''
+            }
 
             <!-- Thank You Message -->
             <div class="thank-you">
@@ -617,398 +666,491 @@ const POSCashierInterface: React.FC<SalesProps> = ({ productsData, companySettin
         </body>
       </html>
     `;
-    
-      receiptWindow.document.write(receiptContent);
-      receiptWindow.document.close();
-    }
-  };
 
-  const completeTransaction = async () => {
-    if (cart.length === 0 || !paymentMethod) return;
-    
-    setIsProcessing(true);
-
-    try {
-      const result = await saveTransaction();
-      
-      if (result.success && result.transaction) {
-        setLastTransaction(result.transaction);
-        
-        alert(`Transaction completed successfully!\nTotal: GHS${calculateTotal().toFixed(2)}`);
-        
-        const shouldPrint = window.confirm('Would you like to print the receipt?');
-        
-        if (shouldPrint) {
-          setTimeout(() => {
-            printReceipt(result.transaction!);
-          }, 100);
+            receiptWindow.document.write(receiptContent);
+            receiptWindow.document.close();
         }
-        fetchProducts();
-        resetAfterTransaction();
-      } else {
-        alert('Failed to save transaction. Please try again.');
-      }
-    } catch (error) {
-      console.error('Transaction error:', error);
-      alert('An error occurred while processing the transaction. Please try again.');
-    } finally {
-      setIsProcessing(false);
-    }
-  };  
+    };
 
-  const resetAfterTransaction = () => {
-    setShowPaymentModal(false);
-    setPaymentMethod(null);
-    setAmountReceived('');
-    clearCart(); // This will clear both state and localStorage
-    setLastTransaction(null);
-    setShowReceiptModal(false);
-  };
+    const completeTransaction = async () => {
+        if (cart.length === 0 || !paymentMethod) return;
 
-  const handleDiscountChange = (value: string) => {
-    const newDiscount = Math.min(100, Math.max(0, parseFloat(value) || 0));
-    setDiscount(newDiscount);
-  };
+        setIsProcessing(true);
 
-  const handleCustomerNameChange = (name: string) => {
-    setCustomerName(name);
-  };
+        try {
+            const result = await saveTransaction();
 
-  return (
-    <div className="h-screen bg-background flex flex-col">
-      <div className="flex-1 flex overflow-hidden">
-        {/* Products Section */}
-        <div className="flex-1 flex flex-col p-6 overflow-hidden">
-          {/* Search and Categories */}
-          <div className="mb-6 space-y-4">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                type="text"
-                placeholder="Search products or scan barcode..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9"
-              />
-            </div>
-            
-            <ScrollArea className="whitespace-nowrap pb-2">
-              <Tabs value={selectedCategory} onValueChange={setSelectedCategory}>
-                <TabsList className="inline-flex h-10 rounded-md">
-                  {allCategories.map((category, index) => (
-                    <TabsTrigger key={index} value={category} className="whitespace-nowrap">
-                      {category}
-                    </TabsTrigger>
-                  ))}
-                </TabsList>
-              </Tabs>
-            </ScrollArea>
-          </div>
+            if (result.success && result.transaction) {
+                setLastTransaction(result.transaction);
 
-          {/* Products Grid */}
-          <ScrollArea className="flex-1">
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 p-1">
-              {filteredProducts.map(product => (
-                <Card key={product.id} className="cursor-pointer hover:shadow-lg transition-shadow">
-                  <Button
-                    variant="ghost"
-                    className="w-full h-full p-0 flex flex-col items-stretch"
-                    onClick={() => addToCart(product)}
-                  >
-                    <CardContent className="p-4 flex flex-col h-full">
-                      <div className="w-full h-32 bg-muted rounded-lg mb-3 flex items-center justify-center">
-                        {product.image ? (
-                          <img 
-                            src={`storage/${product.image}`} 
-                            alt={product.name} 
-                            className="max-h-full max-w-full object-contain" 
-                          />
-                        ) : (
-                          <ShoppingCart className="h-12 w-12 text-muted-foreground" />
+                alert(
+                    `Transaction completed successfully!\nTotal: GHS${calculateTotal().toFixed(2)}`,
+                );
+
+                const shouldPrint = window.confirm(
+                    'Would you like to print the receipt?',
+                );
+
+                if (shouldPrint) {
+                    setTimeout(() => {
+                        printReceipt(result.transaction!);
+                    }, 100);
+                }
+                fetchProducts();
+                resetAfterTransaction();
+            } else {
+                alert('Failed to save transaction. Please try again.');
+            }
+        } catch (error) {
+            console.error('Transaction error:', error);
+            alert(
+                'An error occurred while processing the transaction. Please try again.',
+            );
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
+    const resetAfterTransaction = () => {
+        setShowPaymentModal(false);
+        setPaymentMethod(null);
+        setAmountReceived('');
+        clearCart(); // This will clear both state and localStorage
+        setLastTransaction(null);
+        setShowReceiptModal(false);
+    };
+
+    const handleDiscountChange = (value: string) => {
+        const newDiscount = Math.min(100, Math.max(0, parseFloat(value) || 0));
+        setDiscount(newDiscount);
+    };
+
+    const handleCustomerNameChange = (name: string) => {
+        setCustomerName(name);
+    };
+
+    return (
+        <div className="flex h-screen flex-col bg-background">
+            <div className="flex flex-1 overflow-hidden">
+                {/* Products Section */}
+                <div className="flex flex-1 flex-col overflow-hidden p-6">
+                    {/* Search and Categories */}
+                    <div className="mb-6 space-y-4">
+                        <div className="relative">
+                            <Search className="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 transform text-muted-foreground" />
+                            <Input
+                                type="text"
+                                placeholder="Search products or scan barcode..."
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                className="pl-9"
+                            />
+                        </div>
+
+                        <ScrollArea className="pb-2 whitespace-nowrap">
+                            <Tabs
+                                value={selectedCategory}
+                                onValueChange={setSelectedCategory}
+                            >
+                                <TabsList className="inline-flex h-10 rounded-md">
+                                    {allCategories.map((category, index) => (
+                                        <TabsTrigger
+                                            key={index}
+                                            value={category}
+                                            className="whitespace-nowrap"
+                                        >
+                                            {category}
+                                        </TabsTrigger>
+                                    ))}
+                                </TabsList>
+                            </Tabs>
+                        </ScrollArea>
+                    </div>
+
+                    {/* Products Grid */}
+                    <ScrollArea className="flex-1">
+                        <div className="grid grid-cols-2 gap-4 p-1 md:grid-cols-3 lg:grid-cols-4">
+                            {filteredProducts.map((product) => (
+                                <Card
+                                    key={product.id}
+                                    className="cursor-pointer transition-shadow hover:shadow-lg"
+                                >
+                                    <Button
+                                        variant="ghost"
+                                        className="flex h-full w-full flex-col items-stretch p-0"
+                                        onClick={() => addToCart(product)}
+                                    >
+                                        <CardContent className="flex h-full flex-col p-4">
+                                            <div className="mb-3 flex h-32 w-full items-center justify-center rounded-lg bg-muted">
+                                                {product.image ? (
+                                                    <img
+                                                        src={`storage/${product.image}`}
+                                                        alt={product.name}
+                                                        className="max-h-full max-w-full object-contain"
+                                                    />
+                                                ) : (
+                                                    <ShoppingCart className="h-12 w-12 text-muted-foreground" />
+                                                )}
+                                            </div>
+
+                                            <div className="flex-1">
+                                                <h3 className="mb-1 truncate font-semibold text-foreground">
+                                                    {product.name}
+                                                </h3>
+                                                <p className="mb-2 text-sm text-muted-foreground">
+                                                    {product.category}
+                                                </p>
+                                            </div>
+
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-lg font-bold text-primary">
+                                                    GHS{product.price}
+                                                </span>
+                                                <Badge
+                                                    variant="outline"
+                                                    className="text-xs"
+                                                >
+                                                    Stock: {product.stock}
+                                                </Badge>
+                                            </div>
+                                        </CardContent>
+                                    </Button>
+                                </Card>
+                            ))}
+                        </div>
+                        {filteredProducts.length === 0 && (
+                            <div className="py-8 text-center">
+                                <p className="text-muted-foreground">
+                                    There are no products for this category!
+                                </p>
+                            </div>
                         )}
-                      </div>
-                      
-                      <div className="flex-1">
-                        <h3 className="font-semibold text-foreground mb-1 truncate">{product.name}</h3>
-                        <p className="text-sm text-muted-foreground mb-2">{product.category}</p>
-                      </div>
-                      
-                      <div className="flex items-center justify-between">
-                        <span className="text-lg font-bold text-primary">GHS{product.price}</span>
-                        <Badge variant="outline" className="text-xs">
-                          Stock: {product.stock}
-                        </Badge>
-                      </div>
-                    </CardContent>
-                  </Button>
-                </Card>
-              ))}
-            </div>
-            {filteredProducts.length === 0 && (
-              <div className="text-center py-8">
-                <p className="text-muted-foreground">There are no products for this category!</p>
-              </div>
-            )}
-          </ScrollArea>
-        </div>
-
-        {/* Cart Section */}
-        <div className="w-96 border-l bg-card flex flex-col">
-          {/* Cart Header */}
-          <div className="p-4 border-b">
-            <div className="flex items-center justify-between mb-3">
-              <CardTitle className="text-lg">Current Order</CardTitle>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={clearCart}
-                className="text-destructive hover:text-destructive/90"
-              >
-                Clear All
-              </Button>
-            </div>
-            <Input
-              type="text"
-              placeholder="Customer name (optional)"
-              value={customerName}
-              onChange={(e) => handleCustomerNameChange(e.target.value)}
-              className="w-full"
-            />
-          </div>
-
-          {/* Cart Items */}
-          <ScrollArea className="flex-1 p-4">
-            {cart.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center text-muted-foreground">
-                <ShoppingCart className="h-16 w-16 mb-4" />
-                <p className="text-sm">No items in cart</p>
-                {!isCartLoaded && (
-                  <p className="text-xs mt-2">Loading cart...</p>
-                )}
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {cart.map(item => (
-                  <Card key={item.id} className="p-3">
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="flex-1">
-                        <h3 className="font-semibold text-sm">{item.name}</h3>
-                        <p className="text-sm text-muted-foreground">GHS{item.price} each</p>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => removeFromCart(item.id)}
-                        className="h-8 w-8 p-0 text-destructive hover:text-destructive/90"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-2">
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          className="h-7 w-7"
-                          onClick={() => updateQuantity(item.id, item.quantity - 1)}
-                        >
-                          <Minus className="h-3 w-3" />
-                        </Button>
-                        <span className="w-8 text-center font-semibold">{item.quantity}</span>
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          className="h-7 w-7"
-                          onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                        >
-                          <Plus className="h-3 w-3" />
-                        </Button>
-                      </div>
-                      <span className="font-bold">
-                        GHS{(item.price * item.quantity).toFixed(2)}
-                      </span>
-                    </div>
-                  </Card>
-                ))}
-              </div>
-            )}
-          </ScrollArea>
-
-          {/* Cart Summary */}
-          {cart.length > 0 && (
-            <div className="border-t p-4 space-y-3">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Subtotal</span>
-                <span className="font-semibold">GHS{calculateSubtotal().toFixed(2)}</span>
-              </div>
-              
-              <div className="flex items-center gap-2">
-                <Percent className="h-4 w-4 text-muted-foreground" />
-                <Input
-                  type="number"
-                  placeholder="Discount %"
-                  value={discount || ''}
-                  onChange={(e) => handleDiscountChange(e.target.value)}
-                  min="0"
-                  max="100"
-                  className="flex-1"
-                />
-              </div>
-
-              {discount > 0 && (
-                <div className="flex items-center justify-between text-sm text-green-600">
-                  <span>Discount ({discount}%)</span>
-                  <span>-GHS{calculateDiscount().toFixed(2)}</span>
+                    </ScrollArea>
                 </div>
-              )}
 
-              <Separator />
+                {/* Cart Section */}
+                <div className="flex w-96 flex-col border-l bg-card">
+                    {/* Cart Header */}
+                    <div className="border-b p-4">
+                        <div className="mb-3 flex items-center justify-between">
+                            <CardTitle className="text-lg">
+                                Current Order
+                            </CardTitle>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={clearCart}
+                                className="text-destructive hover:text-destructive/90"
+                            >
+                                Clear All
+                            </Button>
+                        </div>
+                        <Input
+                            type="text"
+                            placeholder="Customer name (optional)"
+                            value={customerName}
+                            onChange={(e) =>
+                                handleCustomerNameChange(e.target.value)
+                            }
+                            className="w-full"
+                        />
+                    </div>
 
-              <div className="flex items-center justify-between text-lg font-bold">
-                <span>Total</span>
-                <span className="text-primary">GHS{calculateTotal().toFixed(2)}</span>
-              </div>
+                    {/* Cart Items */}
+                    <ScrollArea className="flex-1 p-4">
+                        {cart.length === 0 ? (
+                            <div className="flex h-full flex-col items-center justify-center text-muted-foreground">
+                                <ShoppingCart className="mb-4 h-16 w-16" />
+                                <p className="text-sm">No items in cart</p>
+                                {!isCartLoaded && (
+                                    <p className="mt-2 text-xs">
+                                        Loading cart...
+                                    </p>
+                                )}
+                            </div>
+                        ) : (
+                            <div className="space-y-3">
+                                {cart.map((item) => (
+                                    <Card key={item.id} className="p-3">
+                                        <div className="mb-2 flex items-start justify-between">
+                                            <div className="flex-1">
+                                                <h3 className="text-sm font-semibold">
+                                                    {item.name}
+                                                </h3>
+                                                <p className="text-sm text-muted-foreground">
+                                                    GHS{item.price} each
+                                                </p>
+                                            </div>
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={() =>
+                                                    removeFromCart(item.id)
+                                                }
+                                                className="h-8 w-8 p-0 text-destructive hover:text-destructive/90"
+                                            >
+                                                <Trash2 className="h-4 w-4" />
+                                            </Button>
+                                        </div>
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center space-x-2">
+                                                <Button
+                                                    variant="outline"
+                                                    size="icon"
+                                                    className="h-7 w-7"
+                                                    onClick={() =>
+                                                        updateQuantity(
+                                                            item.id,
+                                                            item.quantity - 1,
+                                                        )
+                                                    }
+                                                >
+                                                    <Minus className="h-3 w-3" />
+                                                </Button>
+                                                <span className="w-8 text-center font-semibold">
+                                                    {item.quantity}
+                                                </span>
+                                                <Button
+                                                    variant="outline"
+                                                    size="icon"
+                                                    className="h-7 w-7"
+                                                    onClick={() =>
+                                                        updateQuantity(
+                                                            item.id,
+                                                            item.quantity + 1,
+                                                        )
+                                                    }
+                                                >
+                                                    <Plus className="h-3 w-3" />
+                                                </Button>
+                                            </div>
+                                            <span className="font-bold">
+                                                GHS
+                                                {(
+                                                    item.price * item.quantity
+                                                ).toFixed(2)}
+                                            </span>
+                                        </div>
+                                    </Card>
+                                ))}
+                            </div>
+                        )}
+                    </ScrollArea>
 
-              <Button
-                onClick={handlePayment}
-                className="w-full"
-                size="lg"
-              >
-                <CreditCard className="h-5 w-5 mr-2" />
-                Process Payment
-              </Button>
-            </div>
-          )}
-        </div>
-      </div>
+                    {/* Cart Summary */}
+                    {cart.length > 0 && (
+                        <div className="space-y-3 border-t p-4">
+                            <div className="flex items-center justify-between text-sm">
+                                <span className="text-muted-foreground">
+                                    Subtotal
+                                </span>
+                                <span className="font-semibold">
+                                    GHS{calculateSubtotal().toFixed(2)}
+                                </span>
+                            </div>
 
-      {/* Payment Modal */}
-      <Dialog open={showPaymentModal} onOpenChange={setShowPaymentModal}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Payment</DialogTitle>
-          </DialogHeader>
+                            <div className="flex items-center gap-2">
+                                <Percent className="h-4 w-4 text-muted-foreground" />
+                                <Input
+                                    type="number"
+                                    placeholder="Discount %"
+                                    value={discount || ''}
+                                    onChange={(e) =>
+                                        handleDiscountChange(e.target.value)
+                                    }
+                                    min="0"
+                                    max="100"
+                                    className="flex-1"
+                                />
+                            </div>
 
-          <div className="p-4 bg-primary/10 rounded-lg mb-6">
-            <p className="text-sm text-muted-foreground mb-1">Total Amount</p>
-            <p className="text-3xl font-bold text-primary">GHS{calculateTotal().toFixed(2)}</p>
-          </div>
+                            {discount > 0 && (
+                                <div className="flex items-center justify-between text-sm text-green-600">
+                                    <span>Discount ({discount}%)</span>
+                                    <span>
+                                        -GHS{calculateDiscount().toFixed(2)}
+                                    </span>
+                                </div>
+                            )}
 
-          <div className="mb-6">
-            <p className="text-sm font-semibold mb-3">Select Payment Method</p>
-            <div className="grid grid-cols-2 gap-3">
-              <Button
-                variant={paymentMethod === 'cash' ? 'default' : 'outline'}
-                onClick={() => setPaymentMethod('cash')}
-                className="h-auto py-4 flex flex-col gap-2"
-              >
-                <DollarSign className="h-8 w-8" />
-                <span className="font-semibold">Cash</span>
-              </Button>
-              <Button
-                variant={paymentMethod === 'card' ? 'default' : 'outline'}
-                onClick={() => setPaymentMethod('card')}
-                className="h-auto py-4 flex flex-col gap-2"
-              >
-                <CreditCard className="h-8 w-8" />
-                <span className="font-semibold">Card</span>
-              </Button>
-            </div>
-          </div>
+                            <Separator />
 
-          {paymentMethod === 'cash' && (
-            <div className="mb-6 space-y-2">
-              <label className="block text-sm font-semibold">
-                Amount Received
-              </label>
-              <Input
-                type="number"
-                value={amountReceived}
-                onChange={(e) => setAmountReceived(e.target.value)}
-                placeholder="0.00"
-                className="text-lg"
-              />
-              {parseFloat(amountReceived) >= calculateTotal() && (
-                <div className="mt-3 p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
-                  <p className="text-sm text-muted-foreground">Change</p>
-                  <p className="text-xl font-bold text-green-600 dark:text-green-400">
-                    GHS{calculateChange().toFixed(2)}
-                  </p>
+                            <div className="flex items-center justify-between text-lg font-bold">
+                                <span>Total</span>
+                                <span className="text-primary">
+                                    GHS{calculateTotal().toFixed(2)}
+                                </span>
+                            </div>
+
+                            <Button
+                                onClick={handlePayment}
+                                className="w-full"
+                                size="lg"
+                            >
+                                <CreditCard className="mr-2 h-5 w-5" />
+                                Process Payment
+                            </Button>
+                        </div>
+                    )}
                 </div>
-              )}
             </div>
-          )}
 
-          <DialogFooter>
-            <Button
-              onClick={completeTransaction}
-              disabled={!paymentMethod || (paymentMethod === 'cash' && parseFloat(amountReceived) < calculateTotal()) || isProcessing}
-              className="w-full"
-              size="lg"
-            >
-              {isProcessing ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Processing...
-                </>
-              ) : (
-                <>
-                  <Check className="h-5 w-5 mr-2" />
-                  Complete Transaction
-                </>
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            {/* Payment Modal */}
+            <Dialog open={showPaymentModal} onOpenChange={setShowPaymentModal}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Payment</DialogTitle>
+                    </DialogHeader>
 
-      {/* Receipt Modal */}
-      <Dialog open={showReceiptModal} onOpenChange={setShowReceiptModal}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Receipt Preview</DialogTitle>
-          </DialogHeader>
-          
-          <div className="p-4 max-h-96 overflow-y-auto">
-            <div className="text-center text-muted-foreground">
-              Receipt preview available in print view
-            </div>
-          </div>
-          
-          <DialogFooter className="gap-2">
-            <Button
-              onClick={() => lastTransaction && printReceipt(lastTransaction)}
-              className="flex-1"
-            >
-              <Printer className="h-4 w-4 mr-2" />
-              Print
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => setShowReceiptModal(false)}
-              className="flex-1"
-            >
-              Close
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
+                    <div className="mb-6 rounded-lg bg-primary/10 p-4">
+                        <p className="mb-1 text-sm text-muted-foreground">
+                            Total Amount
+                        </p>
+                        <p className="text-3xl font-bold text-primary">
+                            GHS{calculateTotal().toFixed(2)}
+                        </p>
+                    </div>
+
+                    <div className="mb-6">
+                        <p className="mb-3 text-sm font-semibold">
+                            Select Payment Method
+                        </p>
+                        <div className="grid grid-cols-2 gap-3">
+                            <Button
+                                variant={
+                                    paymentMethod === 'cash'
+                                        ? 'default'
+                                        : 'outline'
+                                }
+                                onClick={() => setPaymentMethod('cash')}
+                                className="flex h-auto flex-col gap-2 py-4"
+                            >
+                                <DollarSign className="h-8 w-8" />
+                                <span className="font-semibold">Cash</span>
+                            </Button>
+                            <Button
+                                variant={
+                                    paymentMethod === 'card'
+                                        ? 'default'
+                                        : 'outline'
+                                }
+                                onClick={() => setPaymentMethod('card')}
+                                className="flex h-auto flex-col gap-2 py-4"
+                            >
+                                <CreditCard className="h-8 w-8" />
+                                <span className="font-semibold">Card</span>
+                            </Button>
+                        </div>
+                    </div>
+
+                    {paymentMethod === 'cash' && (
+                        <div className="mb-6 space-y-2">
+                            <label className="block text-sm font-semibold">
+                                Amount Received
+                            </label>
+                            <Input
+                                type="number"
+                                value={amountReceived}
+                                onChange={(e) =>
+                                    setAmountReceived(e.target.value)
+                                }
+                                placeholder="0.00"
+                                className="text-lg"
+                            />
+                            {parseFloat(amountReceived) >= calculateTotal() && (
+                                <div className="mt-3 rounded-lg bg-green-50 p-3 dark:bg-green-900/20">
+                                    <p className="text-sm text-muted-foreground">
+                                        Change
+                                    </p>
+                                    <p className="text-xl font-bold text-green-600 dark:text-green-400">
+                                        GHS{calculateChange().toFixed(2)}
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    <DialogFooter>
+                        <Button
+                            onClick={completeTransaction}
+                            disabled={
+                                !paymentMethod ||
+                                (paymentMethod === 'cash' &&
+                                    parseFloat(amountReceived) <
+                                        calculateTotal()) ||
+                                isProcessing
+                            }
+                            className="w-full"
+                            size="lg"
+                        >
+                            {isProcessing ? (
+                                <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    Processing...
+                                </>
+                            ) : (
+                                <>
+                                    <Check className="mr-2 h-5 w-5" />
+                                    Complete Transaction
+                                </>
+                            )}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Receipt Modal */}
+            <Dialog open={showReceiptModal} onOpenChange={setShowReceiptModal}>
+                <DialogContent className="sm:max-w-sm">
+                    <DialogHeader>
+                        <DialogTitle>Receipt Preview</DialogTitle>
+                    </DialogHeader>
+
+                    <div className="max-h-96 overflow-y-auto p-4">
+                        <div className="text-center text-muted-foreground">
+                            Receipt preview available in print view
+                        </div>
+                    </div>
+
+                    <DialogFooter className="gap-2">
+                        <Button
+                            onClick={() =>
+                                lastTransaction && printReceipt(lastTransaction)
+                            }
+                            className="flex-1"
+                        >
+                            <Printer className="mr-2 h-4 w-4" />
+                            Print
+                        </Button>
+                        <Button
+                            variant="outline"
+                            onClick={() => setShowReceiptModal(false)}
+                            className="flex-1"
+                        >
+                            Close
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+        </div>
+    );
 };
 
 const breadcrumbs: BreadcrumbItem[] = [
-  {
-    title: 'Dashboard',
-    href: '/dashboard',
-  },
+    {
+        title: 'Dashboard',
+        href: '/dashboard',
+    },
 ];
 
-export default function Sales({productsData, companySettings}: SalesProps) {
-  return (
-    <AppLayout breadcrumbs={breadcrumbs}>
-      <Head title="POS System" />
-      <POSCashierInterface productsData={productsData} companySettings={companySettings} />
-    </AppLayout>
-  );
+export default function Sales({ productsData, companySettings }: SalesProps) {
+    return (
+        <AppLayout breadcrumbs={breadcrumbs}>
+            <Head title="POS System" />
+            <POSCashierInterface
+                productsData={productsData}
+                companySettings={companySettings}
+            />
+        </AppLayout>
+    );
 }

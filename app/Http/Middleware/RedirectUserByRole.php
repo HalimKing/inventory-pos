@@ -19,7 +19,7 @@ class RedirectUserByRole
         if (!auth()->check()) {
             return $next($request);
         }
-        
+
 
         // Define routes that should not be redirected (allowed to access)
         $exemptRoutes = [
@@ -35,27 +35,37 @@ class RedirectUserByRole
             }
         }
 
-        // Get user role
-        $role = auth()->user()->role_id;
+        // Resolve role name first to avoid hard-coded role ID assumptions.
+        $roleName = strtolower((string) optional(auth()->user()->role)->name);
+        $roleId = (int) auth()->user()->role_id;
 
         // Define role-specific dashboards
-        $roleDashboards = [
+        $roleDashboardsByName = [
+            'cashier' => 'cashier.dashboard',
+            'supper admin' => 'admin.dashboard',
+            'admin' => 'admin.dashboard',
+            'inventory' => 'admin.products.index',
+        ];
+
+        // Fallback for legacy DBs where role relation/name may be missing.
+        $roleDashboardsById = [
             3 => 'cashier.dashboard',
             1 => 'admin.dashboard',
             2 => 'admin.dashboard',
-            // 3 => 'manager.dashboard',
-            // Add more roles as needed
+            4 => 'admin.products.index',
         ];
-      
+
+        $targetDashboard = $roleDashboardsByName[$roleName] ?? $roleDashboardsById[$roleId] ?? null;
+
 
         // If user is already on their correct dashboard route, continue
-        if (isset($roleDashboards[$role]) && $request->routeIs($roleDashboards[$role])) {
+        if ($targetDashboard && $request->routeIs($targetDashboard)) {
             return $next($request);
         }
 
         // Redirect to appropriate dashboard based on role
-        if (isset($roleDashboards[$role])) {
-            return redirect()->route($roleDashboards[$role]);
+        if ($targetDashboard) {
+            return redirect()->route($targetDashboard);
         }
 
         // For users without a defined role dashboard, continue normally

@@ -29,7 +29,7 @@ class SupplierController extends Controller
         $supplier->status = $supplier->status == 'active' ? 'inactive' : 'active';
         $supplier->save();
         return redirect()->route('admin.suppliers.index')
-        ->with('success', 'Supplier status updated Successfully!');
+            ->with('success', 'Supplier status updated Successfully!');
     }
 
     /**
@@ -56,7 +56,7 @@ class SupplierController extends Controller
         $supplier->status = $request->status;
         $supplier->save();
         return redirect()->route('admin.suppliers.index')
-        ->with('success', 'Supplier created Successfully!');
+            ->with('success', 'Supplier created Successfully!');
     }
 
     /**
@@ -81,9 +81,9 @@ class SupplierController extends Controller
     public function update(Request $request, string $id)
     {
         //
-         $request->validate([
+        $request->validate([
             'companyName' => 'required|string|max:255',
-            'email' => 'required|email|unique:suppliers,email,'.$id,
+            'email' => 'required|email|unique:suppliers,email,' . $id,
             'address' => 'string|nullable',
             'phone' => 'required|string|max:20',
             'contactPerson' => 'required|string',
@@ -100,7 +100,7 @@ class SupplierController extends Controller
         $supplier->status = $request->status;
         $supplier->save();
         return redirect()->route('admin.suppliers.index')
-        ->with('success', 'Supplier updated Successfully!');
+            ->with('success', 'Supplier updated Successfully!');
     }
 
     /**
@@ -108,11 +108,22 @@ class SupplierController extends Controller
      */
     public function destroy(string $id)
     {
-        //
-        $supplier = Supplier::find($id);
-        $supplier->delete();
-        return redirect()->route('admin.suppliers.index')
-        ->with('success', 'Supplier deleted Successfully!');
+        try {
+            $supplier = Supplier::findOrFail($id);
+            $supplier->delete();
+
+            return response()->json(['message' => 'Supplier deleted successfully.']);
+        } catch (\Illuminate\Database\QueryException $e) {
+            Log::error('Failed to delete supplier due to related records: ' . $e->getMessage());
+
+            return response()->json([
+                'error' => 'Supplier cannot be deleted because it is linked to other records.'
+            ], 409);
+        } catch (\Exception $e) {
+            Log::error('Failed to delete supplier: ' . $e->getMessage());
+
+            return response()->json(['error' => 'Something went wrong.'], 500);
+        }
     }
 
     private function fetchSuppliers()
@@ -153,15 +164,15 @@ class SupplierController extends Controller
 
     public function fetchSuppliersData()
     {
-         $suppliers = Supplier::all();
-            
+        $suppliers = Supplier::all();
+
         // Debug on backend
         Log::info('Fetching categories', [
             'count' => $suppliers->count(),
             'categories' => $suppliers->toArray()
         ]);
 
-        $suppliersData = $suppliers->map(function($supplier){
+        $suppliersData = $suppliers->map(function ($supplier) {
             return [
                 'value' => $supplier->id,
                 'label' => $supplier->company_name

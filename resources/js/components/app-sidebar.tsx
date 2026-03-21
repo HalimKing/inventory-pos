@@ -1,4 +1,3 @@
-import { NavFooter } from '@/components/nav-footer';
 import { NavMain } from '@/components/nav-main';
 import { NavUser } from '@/components/nav-user';
 import {
@@ -11,9 +10,16 @@ import {
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
 import { dashboard } from '@/routes';
-import { type NavItem } from '@/types';
+import { type NavItem, type SharedData } from '@/types';
 import { Link, usePage } from '@inertiajs/react';
-import { BadgeDollarSignIcon, BookOpen, DollarSign, Folder, LayoutGrid, Settings, ShoppingCart, Users } from 'lucide-react';
+import {
+    DollarSign,
+    Folder,
+    LayoutGrid,
+    Settings,
+    ShoppingCart,
+    Users,
+} from 'lucide-react';
 import AppLogo from './app-logo';
 
 // cashier sidebar items
@@ -30,10 +36,28 @@ const cashierNavItems: NavItem[] = [
     },
 ];
 
+const inventoryNavItems: NavItem[] = [
+    {
+        title: 'Products',
+        href: '/admin/products',
+        icon: Folder,
+    },
+    {
+        title: 'Categories',
+        href: '/admin/categories',
+        icon: Folder,
+    },
+    {
+        title: 'Suppliers',
+        href: '/admin/suppliers',
+        icon: Users,
+    },
+];
+
 const mainNavItems: NavItem[] = [
     {
         title: 'Dashboard',
-        href: dashboard(),
+        href: '/admin/dashboard',
         icon: LayoutGrid,
     },
     // sales
@@ -78,13 +102,12 @@ const mainNavItems: NavItem[] = [
         title: 'Settings',
         href: '/admin/settings/index',
         icon: Settings,
-    }
+    },
 ];
 
-
 export function AppSidebar() {
-    const { auth } = usePage().props;
-    
+    const { auth } = usePage<SharedData>().props;
+
     return (
         <Sidebar collapsible="icon" variant="inset">
             <SidebarHeader>
@@ -94,14 +117,21 @@ export function AppSidebar() {
                             <Link href={dashboard()} prefetch>
                                 <AppLogo />
                             </Link>
-                            
                         </SidebarMenuButton>
                     </SidebarMenuItem>
                 </SidebarMenu>
             </SidebarHeader>
 
             <SidebarContent>
-                <NavMain items={auth.user.role_id === 3 ? cashierNavItems : mainNavItems} />
+                <NavMain
+                    items={
+                        auth.user.role_id === 3
+                            ? cashierNavItems
+                            : auth.user.role_id === 4
+                              ? inventoryNavItems
+                              : mainNavItems
+                    }
+                />
             </SidebarContent>
 
             <SidebarFooter>

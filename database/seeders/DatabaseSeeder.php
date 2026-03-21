@@ -15,16 +15,12 @@ class DatabaseSeeder extends Seeder
     {
         // User::factory(10)->create();
 
-        User::firstOrCreate(
-            ['email' => 'admin@gmail.com'],
-            [
-                'name' => 'Supper Admin',
-                'password' => bcrypt('admin12345'),
-                'role_id' => 1, 
-                'phone' => '0123456789',
-                'status' => 'active',
-                'email_verified_at' => now(),
-            ]
-        );
+        $this->call([
+            RoleSeeder::class,
+            CategorySeeder::class,
+            SupplierSeeder::class,
+            UserSeeder::class,
+            companySettingSeeder::class
+        ]);
     }
 }

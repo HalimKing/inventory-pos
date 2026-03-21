@@ -44,7 +44,7 @@ Route::get('/', function () {
 Route::get('dashboard', [DashboardController::class, 'index'])->middleware(['auth', 'redirect.role'])->name('dashboard');
 
 // Cashier Route
-Route::middleware(['auth', 'role:3'])->prefix('cashier')->name('cashier.')->group(function () {
+Route::middleware(['auth', 'role:cashier'])->prefix('cashier')->name('cashier.')->group(function () {
     Route::get('dashboard', [CashierDashboardController::class, 'index'])->name('dashboard');
     Route::get('/api/cashier/dashboard', [CashierDashboardController::class, 'getDashboardData']);
 
@@ -58,123 +58,66 @@ Route::middleware(['auth', 'role:3'])->prefix('cashier')->name('cashier.')->grou
 
 
 
-Route::middleware(['auth', 'verified', 'role:1,2'])->prefix('admin')->name('admin.')->group(function () {
+Route::middleware(['auth', 'verified'])->prefix('admin')->name('admin.')->group(function () {
 
-    /*
-    |--------------------------------------------------------------------------
-    | Dashboard
-    |--------------------------------------------------------------------------
-    */
-    Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
-   
-    Route::get('api/dashboard/data', [DashboardController::class, 'getDashboardData']);
+    // Admin-only access (supper admin + admin)
+    Route::middleware('role:supper admin,admin')->group(function () {
+        Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
+        Route::get('api/dashboard/data', [DashboardController::class, 'getDashboardData']);
 
+        Route::post('imports/products/upload', [ImportProductController::class, 'import'])
+            ->name('imports.products.upload');
 
-    /*
-    |--------------------------------------------------------------------------
-    | Imports
-    |--------------------------------------------------------------------------
-    */
+        Route::get('api/sales/all-users', [UserController::class, 'allUsers']);
+        Route::get('api/roles/all-roles', [RolesController::class, 'allRoles']);
+        Route::get('api/users/{id}/status', [UserController::class, 'updateStatus']);
 
-    Route::post('imports/products/upload', [ImportProductController::class, 'import'])
-        ->name('imports.products.upload');
+        Route::prefix('sales')->group(function () {
+            Route::get('/', [SalesController::class, 'index']);
+            Route::get('products/fetch-all-products', [SalesController::class, 'fetchAllProducts']);
+            Route::post('save/transaction', [SalesController::class, 'saveTransactions']);
+        });
 
+        Route::prefix('api/sales')->group(function () {
+            Route::get('sales-details', [SalesDetailsController::class, 'salesDetails']);
+            Route::get('transactions', [SalesDetailsController::class, 'transactions']);
+            Route::get('transactions/{id}/sale-items', [SalesDetailsController::class, 'saleItems']);
+            Route::get('transactions/{id}/details', [SalesDetailsController::class, 'transactionDetails']);
+        });
 
-    /*
-    |--------------------------------------------------------------------------
-    | Fetch APIs (Categories, Suppliers, Products, Users, Roles)
-    |--------------------------------------------------------------------------
-    */
+        Route::resource('users', UserController::class);
+        Route::post('users/{id}/reset-password', [UserController::class, 'resetPassword']);
+        Route::get('sale-reports', [SalesReportController::class, 'index']);
 
-    Route::prefix('categories')->group(function () {
-        Route::get('fetch-categories', [CategoryController::class, 'fetchCategories']);
-        Route::get('data/fetch/all-categories', [CategoryController::class, 'fetchAllCategories']);
-        Route::post('/bulk-delete/categories', [CategoryController::class, 'bulkDelete']);
+        Route::prefix('settings')->group(function () {
+            Route::get('index', [SettingsController::class, 'index'])->name('settings.index');
+            Route::post('update', [SettingsController::class, 'update']);
+        });
     });
 
-    Route::prefix('suppliers')->group(function () {
-        Route::get('fetch-suppliers', [SupplierController::class, 'fetchAllSuppliers']);
-        Route::get('data/fetch/all-suppliers', [SupplierController::class, 'fetchSuppliersData']);
-        Route::get('{id}/status', [SupplierController::class, 'updateStatus']);
-    });
+    // Shared inventory management access (supper admin + admin + inventory)
+    Route::middleware('role:supper admin,admin,inventory')->group(function () {
+        Route::prefix('categories')->group(function () {
+            Route::get('fetch-categories', [CategoryController::class, 'fetchCategories']);
+            Route::get('data/fetch/all-categories', [CategoryController::class, 'fetchAllCategories']);
+            Route::post('/bulk-delete/categories', [CategoryController::class, 'bulkDelete']);
+        });
 
-    Route::prefix('products')->group(function () {
-        Route::get('data/fetch/all-products', [ProductController::class, 'fetchProductsData']);
-    });
+        Route::prefix('suppliers')->group(function () {
+            Route::get('fetch-suppliers', [SupplierController::class, 'fetchAllSuppliers']);
+            Route::get('data/fetch/all-suppliers', [SupplierController::class, 'fetchSuppliersData']);
+            Route::get('{id}/status', [SupplierController::class, 'updateStatus']);
+        });
 
-    Route::get('api/sales/all-users', [UserController::class, 'allUsers']);
-    Route::get('api/roles/all-roles', [RolesController::class, 'allRoles']);
-    Route::get('api/users/{id}/status', [UserController::class, 'updateStatus']);
+        Route::prefix('products')->group(function () {
+            Route::get('data/fetch/all-products', [ProductController::class, 'fetchProductsData']);
+        });
 
-
-    /*
-    |--------------------------------------------------------------------------
-    | Sales
-    |--------------------------------------------------------------------------
-    */
-
-    Route::prefix('sales')->group(function () {
-        Route::get('/', [SalesController::class, 'index']);
-        Route::get('products/fetch-all-products', [SalesController::class, 'fetchAllProducts']);
-        Route::post('save/transaction', [SalesController::class, 'saveTransactions']);
-        
-    });
-
-    /*
-    |--------------------------------------------------------------------------
-    | Sales Details API
-    |--------------------------------------------------------------------------
-    */
-
-    Route::prefix('api/sales')->group(function () {
-        Route::get('sales-details', [SalesDetailsController::class, 'salesDetails']);
-        Route::get('transactions', [SalesDetailsController::class, 'transactions']);
-        Route::get('transactions/{id}/sale-items', [SalesDetailsController::class, 'saleItems']);
-        Route::get('transactions/{id}/details', [SalesDetailsController::class, 'transactionDetails']);
-    });
-
-
-    /*
-    |--------------------------------------------------------------------------
-    | Resources (RESTful Controllers)
-    |--------------------------------------------------------------------------
-    */
-
-    Route::resource('categories', CategoryController::class);
-    Route::resource('suppliers', SupplierController::class);
-    Route::resource('products', ProductController::class);
-    Route::resource('users', UserController::class);
-
-
-    /*
-    |--------------------------------------------------------------------------
-    | Users
-    |--------------------------------------------------------------------------
-    */
-
-    Route::post('users/{id}/reset-password', [UserController::class, 'resetPassword']);
-
-
-    /*
-    |--------------------------------------------------------------------------
-    | Sales Reports
-    |--------------------------------------------------------------------------
-    */
-
-    Route::get('sale-reports', [SalesReportController::class, 'index']);
-
-
-    /*
-    |--------------------------------------------------------------------------
-    | Settings
-    |--------------------------------------------------------------------------
-    */
-
-    Route::prefix('settings')->group(function () {
-        Route::get('index', [SettingsController::class, 'index'])->name('settings.index');
-        Route::post('update', [SettingsController::class, 'update']);
+        Route::resource('categories', CategoryController::class);
+        Route::resource('suppliers', SupplierController::class);
+        Route::resource('products', ProductController::class);
     });
 });
 
 
-require __DIR__.'/settings.php';
+require __DIR__ . '/settings.php';
