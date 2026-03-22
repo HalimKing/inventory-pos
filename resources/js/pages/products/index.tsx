@@ -16,6 +16,7 @@ import {
 } from '@tanstack/react-table';
 import {
     ArrowUpDown,
+    Barcode,
     ChevronDown,
     Download,
     Filter,
@@ -59,6 +60,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import {
     Table,
     TableBody,
@@ -81,18 +83,35 @@ import * as XLSX from 'xlsx';
 export type Product = {
     id: string;
     name: string;
+    barcode?: string | null;
     category: string; // Assuming category is a string for display but a number for form submission
     totalQuantity: number;
     quantityLeft: number;
     quantitySold: number;
-    expiryDate: Date;
-    status: 'in-stock' | 'low-stock' | 'out-of-stock' | 'expired';
+    expiryDate: Date | string | null;
+    status:
+        | 'in-stock'
+        | 'low-stock'
+        | 'out-of-stock'
+        | 'expired'
+        | 'near-expiry';
     sellingPrice: number;
     initialAmount: number;
     profit: number;
     unitProfit?: number;
     image?: string; // Added image field
     reorderLevel?: number;
+    hasExpiry: boolean;
+    trackBatch: boolean;
+    trackSerial: boolean;
+    stockMode: 'batch' | 'inventory';
+    batchCount?: number;
+    batches?: Array<{
+        id: number;
+        batchNumber: string;
+        quantity: number;
+        expiryDate: string | null;
+    }>;
     // Add category_id and supplier_id for form use (Inertia/Laravel convention)
     category_id: number; // Assuming an ID exists for the Combobox
     supplier_id: number; // Assuming an ID exists for the Combobox
@@ -100,6 +119,7 @@ export type Product = {
 
 interface FormData {
     name: string;
+    barcode: string;
     category: number;
     supplier: number;
     costPrice: number;
@@ -108,7 +128,16 @@ interface FormData {
     image: File | string; // File on upload, string (URL) on initial load/no change
     expiryDate: string;
     reorderLevel?: number;
+    hasExpiry: boolean;
+    trackBatch: boolean;
+    trackSerial: boolean;
     _method?: 'PUT'; // For Inertia PUT request
+}
+
+interface BatchFormData {
+    batchNumber: string;
+    quantity: number;
+    expiryDate: string;
 }
 
 // Helper to format currency
@@ -219,6 +248,8 @@ export const createColumns = (
                         return 'default';
                     case 'low-stock':
                         return 'secondary';
+                    case 'near-expiry':
+                        return 'secondary';
                     case 'out-of-stock':
                         return 'destructive';
                     case 'expired':
@@ -243,6 +274,19 @@ export const createColumns = (
         filterFn: (row, columnId, filterValue) => {
             if (filterValue === 'all') return true;
             return row.getValue(columnId) === filterValue;
+        },
+    },
+    {
+        accessorFn: (row) => (row.hasExpiry ? 'perishable' : 'non-perishable'),
+        id: 'inventoryType',
+        header: 'Inventory Type',
+        cell: ({ row }) => {
+            const inventoryType = row.getValue('inventoryType') as string;
+            return (
+                <Badge variant="outline" className="capitalize">
+                    {inventoryType}
+                </Badge>
+            );
         },
     },
     {
@@ -449,7 +493,19 @@ export const createColumns = (
             );
         },
         cell: ({ row }) => {
-            const date = new Date(row.getValue('expiryDate'));
+            const rawExpiryDate = row.getValue('expiryDate');
+            const hasExpiry = row.original.hasExpiry;
+
+            if (!hasExpiry || !rawExpiryDate) {
+                return <div className="text-muted-foreground">Not tracked</div>;
+            }
+
+            const date = new Date(rawExpiryDate as string);
+
+            if (isNaN(date.getTime())) {
+                return <div className="text-muted-foreground">Not set</div>;
+            }
+
             const formatted = date.toLocaleDateString('en-US', {
                 year: 'numeric',
                 month: 'short',
@@ -525,6 +581,16 @@ const ProducIndexPage = ({ productData }: { productData: Product[] }) => {
     const [isEditProductOpen, setIsEditProductOpen] = React.useState(false);
     const [selectedProduct, setSelectedProduct] =
         React.useState<Product | null>(null);
+    const [isBatchDialogOpen, setIsBatchDialogOpen] = React.useState(false);
+    const [isBatchSaving, setIsBatchSaving] = React.useState(false);
+    const [editingBatchId, setEditingBatchId] = React.useState<number | null>(
+        null,
+    );
+    const [batchForm, setBatchForm] = React.useState<BatchFormData>({
+        batchNumber: '',
+        quantity: 0,
+        expiryDate: '',
+    });
 
     // **NEW STATES FOR EXCEL UPLOAD**
     const [isUploadDialogOpen, setIsUploadDialogOpen] = React.useState(false);
@@ -546,6 +612,49 @@ const ProducIndexPage = ({ productData }: { productData: Product[] }) => {
     >([]);
     const { flash } = usePage().props as { flash?: FlashMessages };
 
+    const generateBarcodeValue = () => {
+        const randomDigits = Math.floor(100 + Math.random() * 900);
+        return `BC-${Date.now().toString().slice(-7)}${randomDigits}`;
+    };
+
+    const printBarcodeLabel = (product: Product) => {
+        if (!product.barcode) {
+            toast.error('This product has no barcode to print.');
+            return;
+        }
+
+        const printWindow = window.open('', '_blank');
+
+        if (!printWindow) {
+            toast.error('Unable to open print window.');
+            return;
+        }
+
+        printWindow.document.write(`
+            <html>
+                <head>
+                    <title>Barcode Label</title>
+                    <style>
+                        body { font-family: Arial, sans-serif; padding: 24px; }
+                        .label { border: 1px solid #000; width: 280px; padding: 14px; }
+                        .name { font-size: 14px; font-weight: 700; margin-bottom: 8px; }
+                        .barcode { font-family: 'Courier New', monospace; font-size: 22px; letter-spacing: 2px; margin-bottom: 6px; }
+                        .value { font-size: 12px; color: #333; }
+                    </style>
+                </head>
+                <body>
+                    <div class="label">
+                        <div class="name">${product.name}</div>
+                        <div class="barcode">*${product.barcode}*</div>
+                        <div class="value">${product.barcode}</div>
+                    </div>
+                    <script>window.print();</script>
+                </body>
+            </html>
+        `);
+        printWindow.document.close();
+    };
+
     // Form for ADDING a new product
     const {
         data,
@@ -556,6 +665,7 @@ const ProducIndexPage = ({ productData }: { productData: Product[] }) => {
         reset: resetAddForm,
     } = useForm<FormData>({
         name: '',
+        barcode: '',
         category: 0,
         supplier: 0,
         sellingPrice: 0,
@@ -564,6 +674,9 @@ const ProducIndexPage = ({ productData }: { productData: Product[] }) => {
         image: '',
         expiryDate: '',
         reorderLevel: 0,
+        hasExpiry: false,
+        trackBatch: false,
+        trackSerial: false,
     });
 
     // **NEW Form for EDITING an existing product**
@@ -576,6 +689,7 @@ const ProducIndexPage = ({ productData }: { productData: Product[] }) => {
         reset: resetEditForm,
     } = useForm<FormData>({
         name: '',
+        barcode: '',
         category: 0,
         supplier: 0,
         sellingPrice: 0,
@@ -584,6 +698,9 @@ const ProducIndexPage = ({ productData }: { productData: Product[] }) => {
         image: '',
         expiryDate: '',
         reorderLevel: 0,
+        hasExpiry: false,
+        trackBatch: false,
+        trackSerial: false,
         _method: 'PUT', // Set the method for the PUT request
     });
 
@@ -599,16 +716,20 @@ const ProducIndexPage = ({ productData }: { productData: Product[] }) => {
         // Populate the edit form with the product data
         setEditData({
             name: product.name,
+            barcode: product.barcode ?? '',
             category: product.category_id,
             supplier: product.supplier_id,
             sellingPrice: product.sellingPrice,
             costPrice: product.initialAmount, // initialAmount is Cost Price
             totalQuantity: product.totalQuantity,
             image: product.image ?? '', // Use existing image URL
-            expiryDate: new Date(product.expiryDate)
-                .toISOString()
-                .split('T')[0], // Format Date object for input type="date"
+            expiryDate: product.expiryDate
+                ? new Date(product.expiryDate).toISOString().split('T')[0]
+                : '',
             reorderLevel: product.reorderLevel ?? 0,
+            hasExpiry: product.hasExpiry,
+            trackBatch: product.trackBatch,
+            trackSerial: product.trackSerial,
             _method: 'PUT',
         });
         // Set initial image preview
@@ -687,11 +808,103 @@ const ProducIndexPage = ({ productData }: { productData: Product[] }) => {
         }
     };
 
+    const openAddBatchDialog = () => {
+        setEditingBatchId(null);
+        setBatchForm({
+            batchNumber: '',
+            quantity: 0,
+            expiryDate: '',
+        });
+        setIsBatchDialogOpen(true);
+    };
+
+    const openEditBatchDialog = (batch: {
+        id: number;
+        batchNumber: string;
+        quantity: number;
+        expiryDate: string | null;
+    }) => {
+        setEditingBatchId(batch.id);
+        setBatchForm({
+            batchNumber: batch.batchNumber,
+            quantity: batch.quantity,
+            expiryDate: batch.expiryDate
+                ? new Date(batch.expiryDate).toISOString().split('T')[0]
+                : '',
+        });
+        setIsBatchDialogOpen(true);
+    };
+
+    const handleSaveBatch = async (event: React.FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+
+        if (!selectedProduct) return;
+
+        setIsBatchSaving(true);
+
+        try {
+            if (editingBatchId) {
+                await axios.put(
+                    `/admin/products/${selectedProduct.id}/batches/${editingBatchId}`,
+                    batchForm,
+                );
+                toast.success('Batch updated successfully.');
+            } else {
+                await axios.post(
+                    `/admin/products/${selectedProduct.id}/batches`,
+                    batchForm,
+                );
+                toast.success('Batch added successfully.');
+            }
+
+            setIsBatchDialogOpen(false);
+            setEditingBatchId(null);
+            await fetchAllProducts();
+        } catch (error: any) {
+            const message =
+                error?.response?.data?.message ||
+                'Failed to save batch. Please try again.';
+            toast.error(message);
+        } finally {
+            setIsBatchSaving(false);
+        }
+    };
+
+    const handleDeleteBatch = async (batchId: number) => {
+        if (!selectedProduct) return;
+
+        const result = await Swal.fire({
+            title: 'Delete batch?',
+            text: 'This batch row will be removed permanently.',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            cancelButtonColor: '#3085d6',
+            confirmButtonText: 'Delete',
+        });
+
+        if (!result.isConfirmed) return;
+
+        try {
+            await axios.delete(
+                `/admin/products/${selectedProduct.id}/batches/${batchId}`,
+            );
+            toast.success('Batch removed successfully.');
+            await fetchAllProducts();
+        } catch (error: any) {
+            const message =
+                error?.response?.data?.message ||
+                'Failed to delete batch. Please try again.';
+            toast.error(message);
+        }
+    };
+
     // **NEW: Download CSV Template**
     const downloadCSVTemplate = () => {
         const templateData = [
             [
                 'Product Name',
+                'Barcode',
                 'Category Name',
                 'Supplier Email',
                 'Selling Price',
@@ -699,9 +912,13 @@ const ProducIndexPage = ({ productData }: { productData: Product[] }) => {
                 'Total Quantity',
                 'Reorder Level',
                 'Expiry Date',
+                'Has Expiry',
+                'Track Batch',
+                'Track Serial',
             ],
             [
                 'Example Product',
+                'BC-10024583',
                 'Antacid',
                 'example@mail.com',
                 '100.00',
@@ -709,6 +926,9 @@ const ProducIndexPage = ({ productData }: { productData: Product[] }) => {
                 '50',
                 '10',
                 '2024-12-31',
+                'true',
+                'true',
+                'false',
             ],
         ];
 
@@ -818,6 +1038,7 @@ const ProducIndexPage = ({ productData }: { productData: Product[] }) => {
         const templateData = [
             {
                 'Product Name': 'Example Product',
+                Barcode: 'BC-10024583',
                 'Category Name': 'Antacid',
                 'Supplier Email': 'example@mail.com',
                 'Selling Price': '100.00',
@@ -825,6 +1046,9 @@ const ProducIndexPage = ({ productData }: { productData: Product[] }) => {
                 'Total Quantity': '50',
                 'Reorder Level': '10',
                 'Expiry Date': '2024-12-31',
+                'Has Expiry': 'true',
+                'Track Batch': 'true',
+                'Track Serial': 'false',
             },
         ];
 
@@ -1071,12 +1295,22 @@ const ProducIndexPage = ({ productData }: { productData: Product[] }) => {
                 // Ensure correct type for the Combobox IDs if your backend returns them with different keys
                 category_id: product.category_id || product.category,
                 supplier_id: product.supplier_id || product.supplier,
-                // Ensure expiryDate is a proper Date object/string for useReactTable
-                expiryDate: new Date(product.expiryDate),
+                expiryDate: product.expiryDate
+                    ? new Date(product.expiryDate)
+                    : null,
             }));
 
             if (Array.isArray(allProducts)) {
                 setProducts(allProducts);
+                setSelectedProduct((previous) => {
+                    if (!previous) return previous;
+
+                    return (
+                        allProducts.find(
+                            (product: Product) => product.id === previous.id,
+                        ) ?? previous
+                    );
+                });
             } else {
                 console.error('Expected array but got:', allProducts);
                 toast.error('Invalid data format received');
@@ -1232,6 +1466,49 @@ const ProducIndexPage = ({ productData }: { productData: Product[] }) => {
                                                 {errors.name && (
                                                     <p className="text-sm text-red-600">
                                                         {errors.name}
+                                                    </p>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <div className="grid grid-cols-4 items-start gap-4">
+                                            <Label
+                                                htmlFor="barcode"
+                                                className="text-right"
+                                            >
+                                                Barcode
+                                            </Label>
+                                            <div className="col-span-3 space-y-1">
+                                                <div className="flex gap-2">
+                                                    <Input
+                                                        id="barcode"
+                                                        name="barcode"
+                                                        value={data.barcode}
+                                                        placeholder="Scan or type barcode"
+                                                        className="col-span-3"
+                                                        onChange={(e: any) =>
+                                                            setData(
+                                                                'barcode',
+                                                                e.target.value,
+                                                            )
+                                                        }
+                                                    />
+                                                    <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        onClick={() =>
+                                                            setData(
+                                                                'barcode',
+                                                                generateBarcodeValue(),
+                                                            )
+                                                        }
+                                                    >
+                                                        <Barcode className="mr-1 h-4 w-4" />
+                                                        Generate
+                                                    </Button>
+                                                </div>
+                                                {errors.barcode && (
+                                                    <p className="text-sm text-red-600">
+                                                        {errors.barcode}
                                                     </p>
                                                 )}
                                             </div>
@@ -1392,35 +1669,131 @@ const ProducIndexPage = ({ productData }: { productData: Product[] }) => {
                                                 )}
                                             </div>
                                         </div>
-                                        {/* Expiry Date Input */}
+                                        {/* Tracking Configuration */}
                                         <div className="grid grid-cols-4 items-start gap-4">
-                                            <Label
-                                                htmlFor="expiryDate"
-                                                className="text-right"
-                                            >
-                                                Expiry Date
+                                            <Label className="pt-1 text-right">
+                                                Tracking
                                             </Label>
-                                            <div className="col-span-3 space-y-1">
-                                                <Input
-                                                    id="expiryDate"
-                                                    name="expiryDate"
-                                                    type="date"
-                                                    className="col-span-3"
-                                                    value={data.expiryDate}
-                                                    onChange={(e: any) =>
-                                                        setData(
-                                                            'expiryDate',
-                                                            e.target.value,
-                                                        )
-                                                    }
-                                                />
-                                                {errors.expiryDate && (
-                                                    <p className="rounded-md border border-red-200 bg-red-50 px-3 py-1 text-sm font-medium text-red-600">
-                                                        {errors.expiryDate}
-                                                    </p>
-                                                )}
+                                            <div className="col-span-3 space-y-3">
+                                                <div className="flex items-center justify-between rounded-md border px-3 py-2">
+                                                    <div>
+                                                        <p className="text-sm font-medium">
+                                                            Track Expiry Date
+                                                        </p>
+                                                        <p className="text-xs text-muted-foreground">
+                                                            Enable for
+                                                            perishable items.
+                                                        </p>
+                                                    </div>
+                                                    <Switch
+                                                        checked={data.hasExpiry}
+                                                        onCheckedChange={(
+                                                            checked,
+                                                        ) => {
+                                                            setData(
+                                                                'hasExpiry',
+                                                                checked,
+                                                            );
+                                                            if (!checked) {
+                                                                setData(
+                                                                    'trackBatch',
+                                                                    false,
+                                                                );
+                                                                setData(
+                                                                    'expiryDate',
+                                                                    '',
+                                                                );
+                                                            }
+                                                        }}
+                                                    />
+                                                </div>
+
+                                                <div className="flex items-center justify-between rounded-md border px-3 py-2">
+                                                    <div>
+                                                        <p className="text-sm font-medium">
+                                                            Track Batch
+                                                        </p>
+                                                        <p className="text-xs text-muted-foreground">
+                                                            Use FEFO and
+                                                            lot-level stock.
+                                                        </p>
+                                                    </div>
+                                                    <Switch
+                                                        checked={
+                                                            data.trackBatch
+                                                        }
+                                                        disabled={
+                                                            !data.hasExpiry
+                                                        }
+                                                        onCheckedChange={(
+                                                            checked,
+                                                        ) =>
+                                                            setData(
+                                                                'trackBatch',
+                                                                checked,
+                                                            )
+                                                        }
+                                                    />
+                                                </div>
+
+                                                <div className="flex items-center justify-between rounded-md border px-3 py-2">
+                                                    <div>
+                                                        <p className="text-sm font-medium">
+                                                            Track Serial Number
+                                                        </p>
+                                                        <p className="text-xs text-muted-foreground">
+                                                            Optional for
+                                                            electronics and
+                                                            high-value items.
+                                                        </p>
+                                                    </div>
+                                                    <Switch
+                                                        checked={
+                                                            data.trackSerial
+                                                        }
+                                                        onCheckedChange={(
+                                                            checked,
+                                                        ) =>
+                                                            setData(
+                                                                'trackSerial',
+                                                                checked,
+                                                            )
+                                                        }
+                                                    />
+                                                </div>
                                             </div>
                                         </div>
+                                        {/* Expiry Date Input */}
+                                        {data.hasExpiry && (
+                                            <div className="grid grid-cols-4 items-start gap-4">
+                                                <Label
+                                                    htmlFor="expiryDate"
+                                                    className="text-right"
+                                                >
+                                                    Expiry Date
+                                                </Label>
+                                                <div className="col-span-3 space-y-1">
+                                                    <Input
+                                                        id="expiryDate"
+                                                        name="expiryDate"
+                                                        type="date"
+                                                        className="col-span-3"
+                                                        value={data.expiryDate}
+                                                        onChange={(e: any) =>
+                                                            setData(
+                                                                'expiryDate',
+                                                                e.target.value,
+                                                            )
+                                                        }
+                                                    />
+                                                    {errors.expiryDate && (
+                                                        <p className="rounded-md border border-red-200 bg-red-50 px-3 py-1 text-sm font-medium text-red-600">
+                                                            {errors.expiryDate}
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
                                         {/* Reorder Level Input */}
                                         <div className="grid grid-cols-4 items-start gap-4">
                                             <Label
@@ -1638,6 +2011,44 @@ const ProducIndexPage = ({ productData }: { productData: Product[] }) => {
                                             .join(' ')}
                                     </Badge>
                                 </div>
+                                <div className="flex items-center justify-between p-3 transition-colors hover:bg-gray-50">
+                                    <span className="text-sm font-medium text-gray-600">
+                                        Barcode
+                                    </span>
+                                    <span className="text-sm font-semibold text-gray-900">
+                                        {selectedProduct?.barcode || 'Not set'}
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div className="flex gap-2">
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={() => {
+                                        if (!selectedProduct) return;
+
+                                        setIsViewProductOpen(false);
+                                        handleEditProduct(selectedProduct);
+                                        setEditData(
+                                            'barcode',
+                                            generateBarcodeValue(),
+                                        );
+                                    }}
+                                >
+                                    <Barcode className="mr-1 h-4 w-4" />
+                                    Generate Barcode
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={() =>
+                                        selectedProduct &&
+                                        printBarcodeLabel(selectedProduct)
+                                    }
+                                >
+                                    Print Barcode
+                                </Button>
                             </div>
                         </div>
 
@@ -1720,10 +2131,41 @@ const ProducIndexPage = ({ productData }: { productData: Product[] }) => {
                                 </div>
                                 <div className="flex items-center justify-between p-3 transition-colors hover:bg-gray-50">
                                     <span className="text-sm font-medium text-gray-600">
+                                        Inventory Type
+                                    </span>
+                                    <span className="text-sm font-semibold text-gray-900">
+                                        {selectedProduct?.hasExpiry
+                                            ? 'Perishable'
+                                            : 'Non-perishable'}
+                                    </span>
+                                </div>
+                                <div className="flex items-center justify-between p-3 transition-colors hover:bg-gray-50">
+                                    <span className="text-sm font-medium text-gray-600">
+                                        Batch Tracking
+                                    </span>
+                                    <span className="text-sm font-semibold text-gray-900">
+                                        {selectedProduct?.trackBatch
+                                            ? 'Enabled'
+                                            : 'Disabled'}
+                                    </span>
+                                </div>
+                                <div className="flex items-center justify-between p-3 transition-colors hover:bg-gray-50">
+                                    <span className="text-sm font-medium text-gray-600">
+                                        Serial Tracking
+                                    </span>
+                                    <span className="text-sm font-semibold text-gray-900">
+                                        {selectedProduct?.trackSerial
+                                            ? 'Enabled'
+                                            : 'Disabled'}
+                                    </span>
+                                </div>
+                                <div className="flex items-center justify-between p-3 transition-colors hover:bg-gray-50">
+                                    <span className="text-sm font-medium text-gray-600">
                                         Expiry Date
                                     </span>
                                     <span className="text-sm font-semibold text-gray-900">
-                                        {selectedProduct?.expiryDate
+                                        {selectedProduct?.hasExpiry &&
+                                        selectedProduct?.expiryDate
                                             ? new Date(
                                                   selectedProduct.expiryDate,
                                               ).toLocaleDateString('en-US', {
@@ -1731,10 +2173,113 @@ const ProducIndexPage = ({ productData }: { productData: Product[] }) => {
                                                   month: 'short',
                                                   day: 'numeric',
                                               })
-                                            : 'N/A'}
+                                            : 'Not tracked'}
                                     </span>
                                 </div>
                             </div>
+
+                            {selectedProduct?.trackBatch ? (
+                                <div className="rounded-lg border border-gray-200 bg-white">
+                                    <div className="flex items-center justify-between border-b px-3 py-2 text-sm font-semibold text-gray-700">
+                                        <span>Batch Stock (FEFO)</span>
+                                        <Button
+                                            size="sm"
+                                            onClick={openAddBatchDialog}
+                                        >
+                                            <Plus className="mr-1 h-3 w-3" />
+                                            Add Batch
+                                        </Button>
+                                    </div>
+                                    <div className="max-h-48 overflow-auto">
+                                        <table className="w-full text-sm">
+                                            <thead className="bg-gray-50 text-left text-xs uppercase">
+                                                <tr>
+                                                    <th className="px-3 py-2">
+                                                        Batch
+                                                    </th>
+                                                    <th className="px-3 py-2">
+                                                        Qty
+                                                    </th>
+                                                    <th className="px-3 py-2">
+                                                        Expiry
+                                                    </th>
+                                                    <th className="px-3 py-2 text-right">
+                                                        Actions
+                                                    </th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {(
+                                                    selectedProduct.batches ??
+                                                    []
+                                                ).map((batch) => (
+                                                    <tr
+                                                        key={batch.id}
+                                                        className="border-t"
+                                                    >
+                                                        <td className="px-3 py-2">
+                                                            {batch.batchNumber}
+                                                        </td>
+                                                        <td className="px-3 py-2">
+                                                            {batch.quantity}
+                                                        </td>
+                                                        <td className="px-3 py-2">
+                                                            {batch.expiryDate
+                                                                ? new Date(
+                                                                      batch.expiryDate,
+                                                                  ).toLocaleDateString()
+                                                                : 'Not set'}
+                                                        </td>
+                                                        <td className="px-3 py-2 text-right">
+                                                            <div className="flex justify-end gap-2">
+                                                                <Button
+                                                                    size="sm"
+                                                                    variant="outline"
+                                                                    onClick={() =>
+                                                                        openEditBatchDialog(
+                                                                            batch,
+                                                                        )
+                                                                    }
+                                                                >
+                                                                    Edit
+                                                                </Button>
+                                                                <Button
+                                                                    size="sm"
+                                                                    variant="destructive"
+                                                                    onClick={() =>
+                                                                        handleDeleteBatch(
+                                                                            batch.id,
+                                                                        )
+                                                                    }
+                                                                >
+                                                                    Delete
+                                                                </Button>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                                {(selectedProduct.batches ?? [])
+                                                    .length === 0 && (
+                                                    <tr>
+                                                        <td
+                                                            colSpan={4}
+                                                            className="px-3 py-3 text-center text-muted-foreground"
+                                                        >
+                                                            No active batches
+                                                            available.
+                                                        </td>
+                                                    </tr>
+                                                )}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="rounded-lg border border-gray-200 bg-white p-3 text-sm text-gray-600">
+                                    Non-batch stock uses simple quantity
+                                    tracking from inventory.
+                                </div>
+                            )}
                         </div>
                     </div>
 
@@ -1747,6 +2292,93 @@ const ProducIndexPage = ({ productData }: { productData: Product[] }) => {
                             Close
                         </Button>
                     </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog
+                open={isBatchDialogOpen}
+                onOpenChange={setIsBatchDialogOpen}
+            >
+                <DialogContent className="sm:max-w-[460px]">
+                    <DialogHeader>
+                        <DialogTitle>
+                            {editingBatchId ? 'Edit Batch' : 'Add Batch'}
+                        </DialogTitle>
+                        <DialogDescription>
+                            Manage batch-level stock for{' '}
+                            <span className="font-semibold text-gray-800">
+                                {selectedProduct?.name}
+                            </span>
+                            .
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <form onSubmit={handleSaveBatch} className="space-y-4">
+                        <div className="space-y-2">
+                            <Label htmlFor="batchNumber">Batch Number</Label>
+                            <Input
+                                id="batchNumber"
+                                value={batchForm.batchNumber}
+                                onChange={(event) =>
+                                    setBatchForm((previous) => ({
+                                        ...previous,
+                                        batchNumber: event.target.value,
+                                    }))
+                                }
+                                required
+                            />
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label htmlFor="batchQuantity">Quantity</Label>
+                            <Input
+                                id="batchQuantity"
+                                type="number"
+                                min={0}
+                                value={batchForm.quantity}
+                                onChange={(event) =>
+                                    setBatchForm((previous) => ({
+                                        ...previous,
+                                        quantity: parseInt(event.target.value),
+                                    }))
+                                }
+                                required
+                            />
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label htmlFor="batchExpiryDate">Expiry Date</Label>
+                            <Input
+                                id="batchExpiryDate"
+                                type="date"
+                                value={batchForm.expiryDate}
+                                onChange={(event) =>
+                                    setBatchForm((previous) => ({
+                                        ...previous,
+                                        expiryDate: event.target.value,
+                                    }))
+                                }
+                                required
+                            />
+                        </div>
+
+                        <DialogFooter>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() => setIsBatchDialogOpen(false)}
+                            >
+                                Cancel
+                            </Button>
+                            <Button type="submit" disabled={isBatchSaving}>
+                                {isBatchSaving
+                                    ? 'Saving...'
+                                    : editingBatchId
+                                      ? 'Update Batch'
+                                      : 'Add Batch'}
+                            </Button>
+                        </DialogFooter>
+                    </form>
                 </DialogContent>
             </Dialog>
 
@@ -1802,6 +2434,52 @@ const ProducIndexPage = ({ productData }: { productData: Product[] }) => {
                                     {editErrors.name && (
                                         <p className="flex items-center gap-1 text-xs font-medium text-red-600">
                                             <span>⚠</span> {editErrors.name}
+                                        </p>
+                                    )}
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label
+                                        htmlFor="editBarcode"
+                                        className="text-sm font-medium text-gray-700"
+                                    >
+                                        Barcode
+                                    </Label>
+                                    <div className="flex gap-2">
+                                        <Input
+                                            id="editBarcode"
+                                            name="barcode"
+                                            value={editData.barcode}
+                                            placeholder="Scan or type barcode"
+                                            className={
+                                                editErrors.barcode
+                                                    ? 'border-red-400'
+                                                    : ''
+                                            }
+                                            onChange={(e) =>
+                                                setEditData(
+                                                    'barcode',
+                                                    e.target.value,
+                                                )
+                                            }
+                                        />
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            onClick={() =>
+                                                setEditData(
+                                                    'barcode',
+                                                    generateBarcodeValue(),
+                                                )
+                                            }
+                                        >
+                                            <Barcode className="mr-1 h-4 w-4" />
+                                            Generate
+                                        </Button>
+                                    </div>
+                                    {editErrors.barcode && (
+                                        <p className="flex items-center gap-1 text-xs font-medium text-red-600">
+                                            <span>⚠</span> {editErrors.barcode}
                                         </p>
                                     )}
                                 </div>
@@ -2039,38 +2717,119 @@ const ProducIndexPage = ({ productData }: { productData: Product[] }) => {
                                     </div>
                                 </div>
 
-                                {/* Expiry Date */}
-                                <div className="space-y-2">
-                                    <Label
-                                        htmlFor="editExpiryDate"
-                                        className="text-sm font-medium text-gray-700"
-                                    >
-                                        Expiry Date
+                                {/* Tracking */}
+                                <div className="space-y-3">
+                                    <Label className="text-sm font-medium text-gray-700">
+                                        Tracking Configuration
                                     </Label>
-                                    <Input
-                                        id="editExpiryDate"
-                                        name="expiryDate"
-                                        type="date"
-                                        className={
-                                            editErrors.expiryDate
-                                                ? 'border-red-400'
-                                                : ''
-                                        }
-                                        value={editData.expiryDate}
-                                        onChange={(e) =>
-                                            setEditData(
-                                                'expiryDate',
-                                                e.target.value,
-                                            )
-                                        }
-                                    />
-                                    {editErrors.expiryDate && (
-                                        <p className="flex items-center gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-600">
-                                            <span>⚠</span>{' '}
-                                            {editErrors.expiryDate}
-                                        </p>
-                                    )}
+
+                                    <div className="flex items-center justify-between rounded-md border px-3 py-2">
+                                        <div>
+                                            <p className="text-sm font-medium">
+                                                Track Expiry Date
+                                            </p>
+                                            <p className="text-xs text-muted-foreground">
+                                                Enable for perishable products.
+                                            </p>
+                                        </div>
+                                        <Switch
+                                            checked={editData.hasExpiry}
+                                            onCheckedChange={(checked) => {
+                                                setEditData(
+                                                    'hasExpiry',
+                                                    checked,
+                                                );
+                                                if (!checked) {
+                                                    setEditData(
+                                                        'trackBatch',
+                                                        false,
+                                                    );
+                                                    setEditData(
+                                                        'expiryDate',
+                                                        '',
+                                                    );
+                                                }
+                                            }}
+                                        />
+                                    </div>
+
+                                    <div className="flex items-center justify-between rounded-md border px-3 py-2">
+                                        <div>
+                                            <p className="text-sm font-medium">
+                                                Track Batch
+                                            </p>
+                                            <p className="text-xs text-muted-foreground">
+                                                Use FEFO from nearest expiry
+                                                batch.
+                                            </p>
+                                        </div>
+                                        <Switch
+                                            checked={editData.trackBatch}
+                                            disabled={!editData.hasExpiry}
+                                            onCheckedChange={(checked) =>
+                                                setEditData(
+                                                    'trackBatch',
+                                                    checked,
+                                                )
+                                            }
+                                        />
+                                    </div>
+
+                                    <div className="flex items-center justify-between rounded-md border px-3 py-2">
+                                        <div>
+                                            <p className="text-sm font-medium">
+                                                Track Serial Number
+                                            </p>
+                                            <p className="text-xs text-muted-foreground">
+                                                Optional for electronics.
+                                            </p>
+                                        </div>
+                                        <Switch
+                                            checked={editData.trackSerial}
+                                            onCheckedChange={(checked) =>
+                                                setEditData(
+                                                    'trackSerial',
+                                                    checked,
+                                                )
+                                            }
+                                        />
+                                    </div>
                                 </div>
+
+                                {/* Expiry Date */}
+                                {editData.hasExpiry && (
+                                    <div className="space-y-2">
+                                        <Label
+                                            htmlFor="editExpiryDate"
+                                            className="text-sm font-medium text-gray-700"
+                                        >
+                                            Expiry Date
+                                        </Label>
+                                        <Input
+                                            id="editExpiryDate"
+                                            name="expiryDate"
+                                            type="date"
+                                            className={
+                                                editErrors.expiryDate
+                                                    ? 'border-red-400'
+                                                    : ''
+                                            }
+                                            value={editData.expiryDate}
+                                            onChange={(e) =>
+                                                setEditData(
+                                                    'expiryDate',
+                                                    e.target.value,
+                                                )
+                                            }
+                                        />
+                                        {editErrors.expiryDate && (
+                                            <p className="flex items-center gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-600">
+                                                <span>⚠</span>{' '}
+                                                {editErrors.expiryDate}
+                                            </p>
+                                        )}
+                                    </div>
+                                )}
                             </div>
 
                             {/* Product Image Section */}
@@ -2258,6 +3017,10 @@ const ProducIndexPage = ({ productData }: { productData: Product[] }) => {
                                     </li>
                                     <li>
                                         • Dates should be in YYYY-MM-DD format
+                                    </li>
+                                    <li>
+                                        • Has Expiry / Track Batch / Track
+                                        Serial accept true or false
                                     </li>
                                     <li>
                                         • Prices should be numbers with up to 2
@@ -2452,6 +3215,42 @@ const ProducIndexPage = ({ productData }: { productData: Product[] }) => {
                                     <SelectItem value="expired">
                                         Expired
                                     </SelectItem>
+                                    <SelectItem value="near-expiry">
+                                        Near Expiry
+                                    </SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        {/* Inventory Type Filter */}
+                        <div className="w-full lg:max-w-[220px]">
+                            <Select
+                                value={
+                                    (table
+                                        .getColumn('inventoryType')
+                                        ?.getFilterValue() as string) ?? 'all'
+                                }
+                                onValueChange={(value) =>
+                                    table
+                                        .getColumn('inventoryType')
+                                        ?.setFilterValue(
+                                            value === 'all' ? '' : value,
+                                        )
+                                }
+                            >
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Inventory type" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">
+                                        All Types
+                                    </SelectItem>
+                                    <SelectItem value="perishable">
+                                        Perishable
+                                    </SelectItem>
+                                    <SelectItem value="non-perishable">
+                                        Non-perishable
+                                    </SelectItem>
                                 </SelectContent>
                             </Select>
                         </div>
@@ -2563,12 +3362,15 @@ const ProducIndexPage = ({ productData }: { productData: Product[] }) => {
                                                                     'profit'
                                                                   ? 'Total Profit'
                                                                   : column.id ===
-                                                                      'expiryDate'
-                                                                    ? 'Expiry Date'
+                                                                      'inventoryType'
+                                                                    ? 'Inventory Type'
                                                                     : column.id ===
-                                                                        'image'
-                                                                      ? 'Image'
-                                                                      : column.id}
+                                                                        'expiryDate'
+                                                                      ? 'Expiry Date'
+                                                                      : column.id ===
+                                                                          'image'
+                                                                        ? 'Image'
+                                                                        : column.id}
                                             </DropdownMenuCheckboxItem>
                                         );
                                     })}
@@ -2742,7 +3544,11 @@ export default function Products({ products }: { products: Product[] }) {
         ...p,
         category_id: p.category_id || 0, // Fallback to 0 if not present
         supplier_id: p.supplier_id || 0, // Fallback to 0 if not present
-        expiryDate: new Date(p.expiryDate), // Ensure date is a Date object
+        expiryDate: p.expiryDate ? new Date(p.expiryDate as string) : null,
+        hasExpiry: p.hasExpiry ?? false,
+        trackBatch: p.trackBatch ?? false,
+        trackSerial: p.trackSerial ?? false,
+        stockMode: p.stockMode ?? 'inventory',
     }));
 
     return (

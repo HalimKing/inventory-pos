@@ -12,6 +12,7 @@ class SaleItem extends Model
     protected $fillable = [
         'sale_id', // This should be UUID
         'product_id',
+        'product_batch_id',
         'category_id',
         'product_name',
         'quantity',
@@ -44,5 +45,10 @@ class SaleItem extends Model
     public function product()
     {
         return $this->belongsTo(Product::class, 'product_id');
+    }
+
+    public function productBatch()
+    {
+        return $this->belongsTo(ProductBatch::class, 'product_batch_id');
     }
 }

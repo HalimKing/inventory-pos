@@ -43,6 +43,10 @@ Route::get('/', function () {
 // })->middleware(['auth', 'redirect.role'])->name('dashboard');
 Route::get('dashboard', [DashboardController::class, 'index'])->middleware(['auth', 'redirect.role'])->name('dashboard');
 
+Route::middleware(['auth', 'role:supper admin,admin,cashier'])->group(function () {
+    Route::get('api/products/barcode/{barcode}', [SalesController::class, 'fetchProductByBarcode']);
+});
+
 // Cashier Route
 Route::middleware(['auth', 'role:cashier'])->prefix('cashier')->name('cashier.')->group(function () {
     Route::get('dashboard', [CashierDashboardController::class, 'index'])->name('dashboard');
@@ -111,6 +115,9 @@ Route::middleware(['auth', 'verified'])->prefix('admin')->name('admin.')->group(
 
         Route::prefix('products')->group(function () {
             Route::get('data/fetch/all-products', [ProductController::class, 'fetchProductsData']);
+            Route::post('{product}/batches', [ProductController::class, 'storeBatch']);
+            Route::put('{product}/batches/{batch}', [ProductController::class, 'updateBatch']);
+            Route::delete('{product}/batches/{batch}', [ProductController::class, 'destroyBatch']);
         });
 
         Route::resource('categories', CategoryController::class);

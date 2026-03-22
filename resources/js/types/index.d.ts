@@ -60,6 +60,11 @@ export interface Product {
   sku: string;
   price: number;
   category: string;
+  has_expiry?: boolean;
+  track_batch?: boolean;
+  track_serial?: boolean;
+  expiry_date?: string | null;
+  inventory_type?: 'perishable' | 'non-perishable';
 }
 
 export interface Batch {

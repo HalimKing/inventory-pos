@@ -3,6 +3,7 @@ import { BreadcrumbItem, SharedData } from '@/types';
 import { Head, usePage } from '@inertiajs/react';
 import axios from 'axios';
 import {
+    Barcode,
     Check,
     CreditCard,
     DollarSign,
@@ -15,7 +16,7 @@ import {
     ShoppingCart,
     Trash2,
 } from 'lucide-react';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 // Shadcn Components
 import { Badge } from '@/components/ui/badge';
@@ -39,8 +40,20 @@ interface Product {
     price: number;
     category: string;
     stock: number;
-    barcode: string;
+    barcode?: string | null;
     image?: string;
+    has_expiry?: boolean;
+    track_batch?: boolean;
+    track_serial?: boolean;
+    expiry_date?: string | null;
+    is_expired?: boolean;
+    is_near_expiry?: boolean;
+    inventory_type?: 'perishable' | 'non-perishable';
+    selected_batch?: {
+        id: number;
+        batch_number: string;
+        expiry_date: string;
+    } | null;
 }
 
 interface CompanySettings {
@@ -171,13 +184,46 @@ const POSCashierInterface: React.FC<SalesProps> = ({
     const [amountReceived, setAmountReceived] = useState('');
     const [customerName, setCustomerName] = useState('');
     const [allCategories, setAllCategories] = useState<string[]>(['All']);
+    const [inventoryFilter, setInventoryFilter] = useState<
+        'all' | 'perishable' | 'non-perishable'
+    >('all');
     const [isProcessing, setIsProcessing] = useState(false);
     const [lastTransaction, setLastTransaction] =
         useState<TransactionData | null>(null);
     const [showReceiptModal, setShowReceiptModal] = useState(false);
     const [isCartLoaded, setIsCartLoaded] = useState(false);
     const [allProducts, setAllProducts] = useState<Product[]>(productsData);
+    const [barcodeInput, setBarcodeInput] = useState('');
+    const [isScanning, setIsScanning] = useState(false);
+    const barcodeInputRef = useRef<HTMLInputElement>(null);
     const { auth } = usePage<SharedData>().props;
+
+    const focusBarcodeInput = () => {
+        window.requestAnimationFrame(() => {
+            barcodeInputRef.current?.focus();
+            barcodeInputRef.current?.select();
+        });
+    };
+
+    const playScanSuccessSound = () => {
+        try {
+            const audioContext = new window.AudioContext();
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+
+            oscillator.type = 'sine';
+            oscillator.frequency.value = 1000;
+            gainNode.gain.value = 0.08;
+
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+
+            oscillator.start();
+            oscillator.stop(audioContext.currentTime + 0.09);
+        } catch (error) {
+            console.error('Unable to play scan sound:', error);
+        }
+    };
 
     // Load data from localStorage after productsData is available
     useEffect(() => {
@@ -192,6 +238,10 @@ const POSCashierInterface: React.FC<SalesProps> = ({
             setIsCartLoaded(true);
         }
     }, [allProducts, isCartLoaded]);
+
+    useEffect(() => {
+        focusBarcodeInput();
+    }, []);
 
     // Save cart to localStorage whenever cart changes
     useEffect(() => {
@@ -215,12 +265,19 @@ const POSCashierInterface: React.FC<SalesProps> = ({
     }, [discount, isCartLoaded]);
 
     const filteredProducts = allProducts.filter((product) => {
-        const matchesSearch = product.name
-            .toLowerCase()
-            .includes(searchQuery.toLowerCase());
+        const normalizedSearch = searchQuery.toLowerCase();
+        const matchesSearch =
+            product.name.toLowerCase().includes(normalizedSearch) ||
+            (product.barcode ?? '').toLowerCase().includes(normalizedSearch);
         const matchesCategory =
             selectedCategory === 'All' || product.category === selectedCategory;
-        return matchesSearch && matchesCategory;
+        const matchesInventoryType =
+            inventoryFilter === 'all' ||
+            (product.inventory_type ??
+                (product.has_expiry ? 'perishable' : 'non-perishable')) ===
+                inventoryFilter;
+
+        return matchesSearch && matchesCategory && matchesInventoryType;
     });
 
     useEffect(() => {
@@ -253,8 +310,17 @@ const POSCashierInterface: React.FC<SalesProps> = ({
             });
     }, []);
 
-
     const addToCart = (product: Product) => {
+        if (product.stock <= 0) {
+            alert(`${product.name} is out of stock.`);
+            return;
+        }
+
+        if (product.is_expired) {
+            alert(`${product.name} is expired and cannot be sold.`);
+            return;
+        }
+
         const existingItem = cart.find((item) => item.id === product.id);
 
         if (existingItem) {
@@ -269,6 +335,70 @@ const POSCashierInterface: React.FC<SalesProps> = ({
         } else {
             const updatedCart = [...cart, { ...product, quantity: 1 }];
             setCart(updatedCart);
+        }
+    };
+
+    const lookupProductByBarcode = async (inputBarcode: string) => {
+        const scannedBarcode = inputBarcode.trim();
+
+        if (!scannedBarcode) {
+            return;
+        }
+
+        const localMatch = allProducts.find(
+            (product) => product.barcode === scannedBarcode,
+        );
+
+        if (localMatch) {
+            addToCart(localMatch);
+            playScanSuccessSound();
+            setBarcodeInput('');
+            focusBarcodeInput();
+            return;
+        }
+
+        setIsScanning(true);
+
+        try {
+            const response = await axios.get(
+                `/api/products/barcode/${encodeURIComponent(scannedBarcode)}`,
+            );
+
+            const scannedProduct: Product = response.data;
+
+            setAllProducts((previousProducts) => {
+                const productExists = previousProducts.some(
+                    (product) => product.id === scannedProduct.id,
+                );
+
+                if (productExists) {
+                    return previousProducts.map((product) =>
+                        product.id === scannedProduct.id
+                            ? { ...product, ...scannedProduct }
+                            : product,
+                    );
+                }
+
+                return [...previousProducts, scannedProduct];
+            });
+
+            addToCart(scannedProduct);
+            playScanSuccessSound();
+            setBarcodeInput('');
+            focusBarcodeInput();
+        } catch (error) {
+            if (axios.isAxiosError(error)) {
+                const message =
+                    error.response?.data?.message || 'Product not found';
+                alert(message);
+            } else {
+                alert('Product not found');
+            }
+
+            setBarcodeInput('');
+            focusBarcodeInput();
+        } finally {
+            setIsScanning(false);
         }
     };
 
@@ -396,6 +526,14 @@ const POSCashierInterface: React.FC<SalesProps> = ({
             }
         } catch (error) {
             console.error('Error saving transaction:', error);
+            if (axios.isAxiosError(error)) {
+                const responseErrors = error.response?.data?.errors;
+                if (Array.isArray(responseErrors) && responseErrors.length) {
+                    alert(responseErrors.join('\n'));
+                } else if (typeof error.response?.data?.message === 'string') {
+                    alert(error.response.data.message);
+                }
+            }
             return { success: false };
         }
     };
@@ -736,6 +874,43 @@ const POSCashierInterface: React.FC<SalesProps> = ({
                 <div className="flex flex-1 flex-col overflow-hidden p-6">
                     {/* Search and Categories */}
                     <div className="mb-6 space-y-4">
+                        <div className="rounded-md border bg-card p-3">
+                            <div className="mb-2 flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                                <Barcode className="h-4 w-4" />
+                                Barcode Scanner
+                            </div>
+                            <div className="flex gap-2">
+                                <Input
+                                    ref={barcodeInputRef}
+                                    type="text"
+                                    placeholder="Scan or type barcode, then press Enter"
+                                    value={barcodeInput}
+                                    onChange={(e) =>
+                                        setBarcodeInput(e.target.value)
+                                    }
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                            e.preventDefault();
+                                            lookupProductByBarcode(
+                                                barcodeInput,
+                                            );
+                                        }
+                                    }}
+                                />
+                                <Button
+                                    type="button"
+                                    onClick={() =>
+                                        lookupProductByBarcode(barcodeInput)
+                                    }
+                                    disabled={
+                                        isScanning || !barcodeInput.trim()
+                                    }
+                                >
+                                    {isScanning ? 'Scanning...' : 'Add'}
+                                </Button>
+                            </div>
+                        </div>
+
                         <div className="relative">
                             <Search className="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 transform text-muted-foreground" />
                             <Input
@@ -748,22 +923,71 @@ const POSCashierInterface: React.FC<SalesProps> = ({
                         </div>
 
                         <ScrollArea className="pb-2 whitespace-nowrap">
-                            <Tabs
-                                value={selectedCategory}
-                                onValueChange={setSelectedCategory}
-                            >
-                                <TabsList className="inline-flex h-10 rounded-md">
-                                    {allCategories.map((category, index) => (
-                                        <TabsTrigger
-                                            key={index}
-                                            value={category}
-                                            className="whitespace-nowrap"
-                                        >
-                                            {category}
-                                        </TabsTrigger>
-                                    ))}
-                                </TabsList>
-                            </Tabs>
+                            <div className="space-y-2">
+                                <Tabs
+                                    value={selectedCategory}
+                                    onValueChange={setSelectedCategory}
+                                >
+                                    <TabsList className="inline-flex h-10 rounded-md">
+                                        {allCategories.map(
+                                            (category, index) => (
+                                                <TabsTrigger
+                                                    key={index}
+                                                    value={category}
+                                                    className="whitespace-nowrap"
+                                                >
+                                                    {category}
+                                                </TabsTrigger>
+                                            ),
+                                        )}
+                                    </TabsList>
+                                </Tabs>
+
+                                <div className="flex gap-2">
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        variant={
+                                            inventoryFilter === 'all'
+                                                ? 'default'
+                                                : 'outline'
+                                        }
+                                        onClick={() =>
+                                            setInventoryFilter('all')
+                                        }
+                                    >
+                                        All
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        variant={
+                                            inventoryFilter === 'perishable'
+                                                ? 'default'
+                                                : 'outline'
+                                        }
+                                        onClick={() =>
+                                            setInventoryFilter('perishable')
+                                        }
+                                    >
+                                        Perishable
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        variant={
+                                            inventoryFilter === 'non-perishable'
+                                                ? 'default'
+                                                : 'outline'
+                                        }
+                                        onClick={() =>
+                                            setInventoryFilter('non-perishable')
+                                        }
+                                    >
+                                        Non-perishable
+                                    </Button>
+                                </div>
+                            </div>
                         </ScrollArea>
                     </div>
 
@@ -773,11 +997,12 @@ const POSCashierInterface: React.FC<SalesProps> = ({
                             {filteredProducts.map((product) => (
                                 <Card
                                     key={product.id}
-                                    className="cursor-pointer transition-shadow hover:shadow-lg"
+                                    className={`cursor-pointer transition-shadow hover:shadow-lg ${product.is_expired ? 'opacity-70' : ''}`}
                                 >
                                     <Button
                                         variant="ghost"
                                         className="flex h-full w-full flex-col items-stretch p-0"
+                                        disabled={product.is_expired}
                                         onClick={() => addToCart(product)}
                                     >
                                         <CardContent className="flex h-full flex-col p-4">
@@ -800,6 +1025,46 @@ const POSCashierInterface: React.FC<SalesProps> = ({
                                                 <p className="mb-2 text-sm text-muted-foreground">
                                                     {product.category}
                                                 </p>
+                                                <div className="mb-2 flex flex-wrap gap-1">
+                                                    {(product.inventory_type ??
+                                                        (product.has_expiry
+                                                            ? 'perishable'
+                                                            : 'non-perishable')) ===
+                                                    'perishable' ? (
+                                                        <Badge variant="secondary">
+                                                            Perishable
+                                                        </Badge>
+                                                    ) : (
+                                                        <Badge variant="outline">
+                                                            Non-perishable
+                                                        </Badge>
+                                                    )}
+
+                                                    {product.is_expired && (
+                                                        <Badge variant="destructive">
+                                                            Expired
+                                                        </Badge>
+                                                    )}
+
+                                                    {!product.is_expired &&
+                                                        product.is_near_expiry && (
+                                                            <Badge variant="secondary">
+                                                                Near Expiry
+                                                            </Badge>
+                                                        )}
+                                                </div>
+
+                                                {product.track_batch &&
+                                                    product.selected_batch && (
+                                                        <p className="mb-2 text-xs text-muted-foreground">
+                                                            FEFO batch:{' '}
+                                                            {
+                                                                product
+                                                                    .selected_batch
+                                                                    .batch_number
+                                                            }
+                                                        </p>
+                                                    )}
                                             </div>
 
                                             <div className="flex items-center justify-between">
