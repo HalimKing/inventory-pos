@@ -18,6 +18,7 @@ class UserController extends Controller
     {
         //
         $usersData = $this->allUsers();
+        // dd($usersData);
         return Inertia::render('users/index', compact('usersData'));
     }
 
@@ -151,13 +152,14 @@ class UserController extends Controller
 
     public function allUsers ()
     {
-        $users = User::all();
+        $users = User::with('role')->get();
         $usersData = $users->map(function($user) {
             return [
                 'id' => $user->id,
                 'name' => $user->name,
                 'email' => $user->email,
                 'status' => $user->status,
+                'role' => $user->role->name,
                 'createdAt' => Carbon::parse($user->created_at)->format('Y-m-d'),
                 'phone' => $user->phone,
             ];

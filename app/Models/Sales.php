@@ -21,6 +21,8 @@ class Sales extends Model
         'discount_amount',
         'grand_total',
         'status',
+        'offline_sync_id',
+        'synced_at',
     ];
 
     protected static function boot()

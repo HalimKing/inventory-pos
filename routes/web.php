@@ -45,6 +45,8 @@ Route::get('dashboard', [DashboardController::class, 'index'])->middleware(['aut
 
 Route::middleware(['auth', 'role:supper admin,admin,cashier'])->group(function () {
     Route::get('api/products/barcode/{barcode}', [SalesController::class, 'fetchProductByBarcode']);
+    Route::get('api/categories/fetch', [CategoryController::class, 'fetchCategories']);
+    Route::post('api/sales/sync', [SalesController::class, 'syncOfflineSales']);
 });
 
 // Cashier Route

@@ -16,12 +16,11 @@ import {
     ShoppingCart,
     Trash2,
 } from 'lucide-react';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 // Shadcn Components
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardTitle } from '@/components/ui/card';
+import { Card, CardTitle } from '@/components/ui/card';
 import {
     Dialog,
     DialogContent,
@@ -33,6 +32,14 @@ import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+
+// Offline support components
+import { OfflineModeIndicator } from '@/components/OfflineModeIndicator';
+import { useConnectivityStatus } from '@/hooks/useOnlineStatus';
+import { posDatabase } from '@/lib/database';
+import { offlineSalesStore } from '@/lib/offlineSalesStore';
+import { offlineSyncManager } from '@/lib/offlineSyncManager';
+import { toast } from 'react-toastify';
 
 interface Product {
     id: string;
@@ -72,6 +79,19 @@ interface SalesProps {
     companySettings: CompanySettings;
 }
 
+interface CategoryOption {
+    value: string;
+    label: string;
+}
+
+interface ProductPageResponse {
+    data: Product[];
+    current_page: number;
+    last_page: number;
+    per_page: number;
+    total: number;
+}
+
 interface CartItem extends Product {
     quantity: number;
 }
@@ -86,7 +106,7 @@ interface TransactionData {
     }>;
     customer_name: string;
     subtotal: number;
-    discount_percentage?: number;
+    discount_percentage: number;
     discount_amount: number;
     total_amount: number;
     payment_method: 'cash' | 'card';
@@ -101,23 +121,32 @@ const CART_STORAGE_KEY = 'pos_cart_data';
 const CUSTOMER_STORAGE_KEY = 'pos_customer_name';
 const DISCOUNT_STORAGE_KEY = 'pos_discount';
 
-const loadCartFromStorage = (availableProducts: Product[]): CartItem[] => {
+const resolveImageUrl = (imagePath?: string | null) => {
+    if (!imagePath) {
+        return '';
+    }
+
+    if (/^https?:\/\//i.test(imagePath) || imagePath.startsWith('/')) {
+        return imagePath;
+    }
+
+    return `/storage/${imagePath.replace(/^\/+/, '')}`;
+};
+
+const loadCartFromStorage = (): CartItem[] => {
     try {
         const storedCart = localStorage.getItem(CART_STORAGE_KEY);
         if (!storedCart) return [];
 
         const parsedCart = JSON.parse(storedCart);
 
-        // Validate and filter cart items against available products
-        const validCart = parsedCart.filter((cartItem: CartItem) => {
-            const productExists = availableProducts.find(
-                (p) => p.id === cartItem.id,
-            );
-            return productExists && cartItem.quantity > 0;
-        });
+        if (!Array.isArray(parsedCart)) {
+            return [];
+        }
 
-        // console.log('Loaded cart from storage:', validCart);
-        return validCart;
+        return parsedCart.filter(
+            (cartItem: CartItem) => cartItem && cartItem.quantity > 0,
+        );
     } catch (error) {
         console.error('Error loading cart from storage:', error);
         return [];
@@ -175,7 +204,8 @@ const POSCashierInterface: React.FC<SalesProps> = ({
     // console.log('Initial products data:', productsData);
     const [cart, setCart] = useState<CartItem[]>([]);
     const [searchQuery, setSearchQuery] = useState('');
-    const [selectedCategory, setSelectedCategory] = useState('All');
+    const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+    const [selectedCategory, setSelectedCategory] = useState('all');
     const [discount, setDiscount] = useState(0);
     const [showPaymentModal, setShowPaymentModal] = useState(false);
     const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | null>(
@@ -183,7 +213,9 @@ const POSCashierInterface: React.FC<SalesProps> = ({
     );
     const [amountReceived, setAmountReceived] = useState('');
     const [customerName, setCustomerName] = useState('');
-    const [allCategories, setAllCategories] = useState<string[]>(['All']);
+    const [allCategories, setAllCategories] = useState<CategoryOption[]>([
+        { value: 'all', label: 'All' },
+    ]);
     const [inventoryFilter, setInventoryFilter] = useState<
         'all' | 'perishable' | 'non-perishable'
     >('all');
@@ -192,11 +224,54 @@ const POSCashierInterface: React.FC<SalesProps> = ({
         useState<TransactionData | null>(null);
     const [showReceiptModal, setShowReceiptModal] = useState(false);
     const [isCartLoaded, setIsCartLoaded] = useState(false);
-    const [allProducts, setAllProducts] = useState<Product[]>(productsData);
+    const [products, setProducts] = useState<Product[]>(productsData);
+    const [currentPage, setCurrentPage] = useState(1);
+    const [lastPage, setLastPage] = useState(1);
+    const [totalProducts, setTotalProducts] = useState(0);
+    const [isLoadingProducts, setIsLoadingProducts] = useState(false);
+    const [isLoadingMoreProducts, setIsLoadingMoreProducts] = useState(false);
     const [barcodeInput, setBarcodeInput] = useState('');
     const [isScanning, setIsScanning] = useState(false);
     const barcodeInputRef = useRef<HTMLInputElement>(null);
+    const hasInitializedProductQueryRef = useRef(false);
     const { auth } = usePage<SharedData>().props;
+    const { isOffline } = useConnectivityStatus();
+
+    // Initialize database and products on component mount
+    useEffect(() => {
+        const initializeOfflineMode = async () => {
+            try {
+                await posDatabase.init();
+                console.log('[POS] Offline database initialized');
+            } catch (error) {
+                console.error(
+                    '[POS] Error initializing offline database:',
+                    error,
+                );
+            }
+        };
+
+        initializeOfflineMode();
+    }, []);
+
+    // Listen for sync events
+    useEffect(() => {
+        const unsubscribe = offlineSyncManager.onSync((result) => {
+            if (result.success) {
+                if (result.syncedSales > 0) {
+                    toast.success(
+                        `✅ Synced ${result.syncedSales} offline sale(s)`,
+                    );
+                }
+            } else {
+                toast.error(
+                    `❌ Sync failed: ${result.errors[0]?.message || 'Unknown error'}`,
+                );
+            }
+        });
+
+        return unsubscribe;
+    }, []);
 
     const focusBarcodeInput = () => {
         window.requestAnimationFrame(() => {
@@ -227,8 +302,8 @@ const POSCashierInterface: React.FC<SalesProps> = ({
 
     // Load data from localStorage after productsData is available
     useEffect(() => {
-        if (allProducts && productsData.length > 0 && !isCartLoaded) {
-            const savedCart = loadCartFromStorage(allProducts);
+        if (!isCartLoaded) {
+            const savedCart = loadCartFromStorage();
             const savedCustomerName = loadCustomerNameFromStorage();
             const savedDiscount = loadDiscountFromStorage();
 
@@ -237,7 +312,19 @@ const POSCashierInterface: React.FC<SalesProps> = ({
             setDiscount(savedDiscount);
             setIsCartLoaded(true);
         }
-    }, [allProducts, isCartLoaded]);
+    }, [isCartLoaded]);
+
+    useEffect(() => {
+        const timer = window.setTimeout(() => {
+            setDebouncedSearchQuery(searchQuery.trim());
+        }, 300);
+
+        return () => window.clearTimeout(timer);
+    }, [searchQuery]);
+
+    useEffect(() => {
+        setProducts(productsData);
+    }, [productsData]);
 
     useEffect(() => {
         focusBarcodeInput();
@@ -245,8 +332,14 @@ const POSCashierInterface: React.FC<SalesProps> = ({
 
     // Save cart to localStorage whenever cart changes
     useEffect(() => {
-        if (isCartLoaded && cart.length > 0) {
+        if (!isCartLoaded) {
+            return;
+        }
+
+        if (cart.length > 0) {
             saveCartToStorage(cart);
+        } else {
+            localStorage.removeItem(CART_STORAGE_KEY);
         }
     }, [cart, isCartLoaded]);
 
@@ -264,51 +357,47 @@ const POSCashierInterface: React.FC<SalesProps> = ({
         }
     }, [discount, isCartLoaded]);
 
-    const filteredProducts = allProducts.filter((product) => {
-        const normalizedSearch = searchQuery.toLowerCase();
-        const matchesSearch =
-            product.name.toLowerCase().includes(normalizedSearch) ||
-            (product.barcode ?? '').toLowerCase().includes(normalizedSearch);
-        const matchesCategory =
-            selectedCategory === 'All' || product.category === selectedCategory;
-        const matchesInventoryType =
-            inventoryFilter === 'all' ||
-            (product.inventory_type ??
-                (product.has_expiry ? 'perishable' : 'non-perishable')) ===
-                inventoryFilter;
+    useEffect(() => {
+        const fetchCategories = async () => {
+            try {
+                const response = await axios.get('/api/categories/fetch');
+                const categories = Array.isArray(response.data)
+                    ? response.data
+                          .map((category: { value?: string | number; label?: string }) => {
+                              if (
+                                  category?.value === undefined ||
+                                  category?.label === undefined
+                              ) {
+                                  return null;
+                              }
 
-        return matchesSearch && matchesCategory && matchesInventoryType;
-    });
+                              return {
+                                  value: String(category.value),
+                                  label: category.label,
+                              };
+                          })
+                          .filter(Boolean)
+                    : [];
+
+                setAllCategories([
+                    { value: 'all', label: 'All' },
+                    ...(categories as CategoryOption[]),
+                ]);
+            } catch (error) {
+                console.error('Error fetching categories:', error);
+            }
+        };
+
+        fetchCategories();
+    }, []);
 
     useEffect(() => {
-        var url = '';
-        if (auth.user?.role_id === 3) {
-            url = '/cashier/sales/products/fetch-all-products';
-        } else {
-            url = '/admin/sales/products/fetch-all-products';
+        if (productsData.length > 0 && !isLoadingProducts) {
+            setCurrentPage(1);
+            setLastPage(1);
+            setTotalProducts(productsData.length);
         }
-
-        axios
-            .get(url)
-            .then((response) => {
-                const categorySet = new Set<string>(['All']);
-
-                response.data.forEach((item: any) => {
-                    const categoryName = item?.category ?? item?.label;
-                    if (
-                        typeof categoryName === 'string' &&
-                        categoryName.trim()
-                    ) {
-                        categorySet.add(categoryName);
-                    }
-                });
-
-                setAllCategories(Array.from(categorySet));
-            })
-            .catch((error) => {
-                console.error('Error fetching categories:', error);
-            });
-    }, []);
+    }, [productsData, isLoadingProducts]);
 
     const addToCart = (product: Product) => {
         if (product.stock <= 0) {
@@ -345,7 +434,7 @@ const POSCashierInterface: React.FC<SalesProps> = ({
             return;
         }
 
-        const localMatch = allProducts.find(
+        const localMatch = products.find(
             (product) => product.barcode === scannedBarcode,
         );
 
@@ -365,22 +454,6 @@ const POSCashierInterface: React.FC<SalesProps> = ({
             );
 
             const scannedProduct: Product = response.data;
-
-            setAllProducts((previousProducts) => {
-                const productExists = previousProducts.some(
-                    (product) => product.id === scannedProduct.id,
-                );
-
-                if (productExists) {
-                    return previousProducts.map((product) =>
-                        product.id === scannedProduct.id
-                            ? { ...product, ...scannedProduct }
-                            : product,
-                    );
-                }
-
-                return [...previousProducts, scannedProduct];
-            });
 
             addToCart(scannedProduct);
             playScanSuccessSound();
@@ -408,7 +481,7 @@ const POSCashierInterface: React.FC<SalesProps> = ({
     };
 
     const updateQuantity = (productId: string, newQuantity: number) => {
-        const product = allProducts.find((p) => p.id === productId);
+        const product = cart.find((item) => item.id === productId);
         if (newQuantity <= 0) {
             removeFromCart(productId);
         } else if (product && newQuantity <= product.stock) {
@@ -491,12 +564,48 @@ const POSCashierInterface: React.FC<SalesProps> = ({
                 transaction_id: `TXN-${Date.now()}`,
             };
 
-            var transactionUrl = '';
-            if (auth.user?.role_id === 3) {
-                transactionUrl = '/cashier/sales/save/transaction';
-            } else {
-                transactionUrl = '/admin/sales/save/transaction';
+            // If offline, save to IndexedDB instead of calling API
+            if (isOffline) {
+                console.log('[POS] Saving transaction offline');
+
+                await posDatabase.init();
+
+                const offlineItems = transactionData.items.map((item) => ({
+                    productId: item.product_id,
+                    productName: item.name,
+                    categoryId: '', // We don't have this info, will be populated from cart
+                    quantity: item.quantity,
+                    price: item.price,
+                    totalAmount: item.subtotal,
+                    profit: 0, // Will be calculated from product data
+                    quantityLeft: 0,
+                    quantitySold: 0,
+                }));
+
+                await offlineSalesStore.saveSale({
+                    items: offlineItems,
+                    subtotal: transactionData.subtotal,
+                    discountAmount: transactionData.discount_amount,
+                    discountPercentage: transactionData.discount_percentage,
+                    grandTotal: transactionData.total_amount,
+                    amountPaid: transactionData.amount_received,
+                    changeAmount: transactionData.change_amount,
+                    paymentMethod: transactionData.payment_method,
+                    customerName: transactionData.customer_name,
+                });
+
+                toast.info(
+                    '💾 Sale saved offline. It will be synced when connection is restored.',
+                );
+
+                return { success: true, transaction: transactionData };
             }
+
+            // Online - call the API
+            const transactionUrl =
+                auth.user?.role_id === 3
+                    ? '/cashier/sales/save/transaction'
+                    : '/admin/sales/save/transaction';
 
             const response = await axios.post(transactionUrl, transactionData, {
                 headers: {
@@ -538,26 +647,87 @@ const POSCashierInterface: React.FC<SalesProps> = ({
         }
     };
 
-    const fetchProducts = async () => {
-        var url = '';
-        if (auth.user?.role_id === 3) {
-            url = '/cashier/sales/products/fetch-all-products';
-        } else {
-            url = '/admin/sales/products/fetch-all-products';
+    const fetchProducts = useCallback(async ({
+        page = 1,
+        replace = true,
+        search = debouncedSearchQuery,
+        categoryId = selectedCategory,
+        inventoryType = inventoryFilter,
+    }: {
+        page?: number;
+        replace?: boolean;
+        search?: string;
+        categoryId?: string;
+        inventoryType?: 'all' | 'perishable' | 'non-perishable';
+    } = {}) => {
+        const url =
+            auth.user?.role_id === 3
+                ? '/cashier/sales/products/fetch-all-products'
+                : '/admin/sales/products/fetch-all-products';
+
+        const params = new URLSearchParams();
+        params.set('page', String(page));
+        params.set('per_page', '5');
+
+        if (search.trim()) {
+            params.set('search', search.trim());
         }
+
+        if (categoryId && categoryId !== 'all') {
+            params.set('category_id', categoryId);
+        }
+
+        if (inventoryType !== 'all') {
+            params.set('inventory_type', inventoryType);
+        }
+
         try {
-            const response = await axios.get(url);
-            console.log('raw response', response.data);
-            setAllProducts(response.data);
+            if (replace || page <= 1) {
+                setIsLoadingProducts(true);
+            } else {
+                setIsLoadingMoreProducts(true);
+            }
+
+            const response = await axios.get<ProductPageResponse>(
+                `${url}?${params.toString()}`,
+            );
+
+            const payload = response.data;
+            const nextProducts = payload.data ?? [];
+
+            setProducts((previousProducts) =>
+                replace || page <= 1
+                    ? nextProducts
+                    : [...previousProducts, ...nextProducts],
+            );
+            setCurrentPage(payload.current_page ?? page);
+            setLastPage(payload.last_page ?? page);
+            setTotalProducts(payload.total ?? nextProducts.length);
         } catch (error) {
             console.error('Fetching Error', error);
+        } finally {
+            setIsLoadingProducts(false);
+            setIsLoadingMoreProducts(false);
         }
-    };
+    }, [auth.user?.role_id, debouncedSearchQuery, selectedCategory, inventoryFilter]);
+
+    useEffect(() => {
+        if (!isCartLoaded) {
+            return;
+        }
+
+        if (!hasInitializedProductQueryRef.current) {
+            hasInitializedProductQueryRef.current = true;
+            return;
+        }
+
+        fetchProducts({ page: 1, replace: true });
+    }, [debouncedSearchQuery, selectedCategory, inventoryFilter, isCartLoaded, fetchProducts]);
 
     const printReceipt = (transaction: TransactionData) => {
         const receiptWindow = window.open('', '_blank');
         if (receiptWindow) {
-            const formatPrice = (price: any): string => {
+            const formatPrice = (price: string | number): string => {
                 const num =
                     typeof price === 'string' ? parseFloat(price) : price;
                 return isNaN(num) ? '0.00' : num.toFixed(2);
@@ -834,7 +1004,7 @@ const POSCashierInterface: React.FC<SalesProps> = ({
                         printReceipt(result.transaction!);
                     }, 100);
                 }
-                fetchProducts();
+                fetchProducts({ page: 1, replace: true });
                 resetAfterTransaction();
             } else {
                 alert('Failed to save transaction. Please try again.');
@@ -868,10 +1038,15 @@ const POSCashierInterface: React.FC<SalesProps> = ({
     };
 
     return (
-        <div className="flex h-screen flex-col bg-background">
-            <div className="flex flex-1 overflow-hidden">
+        <div className="flex min-h-dvh flex-col bg-background">
+            {/* Offline Indicator */}
+            <div className="border-b bg-card px-6 py-2">
+                <OfflineModeIndicator />
+            </div>
+
+            <div className="flex min-h-0 flex-1 overflow-hidden">
                 {/* Products Section */}
-                <div className="flex flex-1 flex-col overflow-hidden p-6">
+                <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-6">
                     {/* Search and Categories */}
                     <div className="mb-6 space-y-4">
                         <div className="rounded-md border bg-card p-3">
@@ -929,17 +1104,15 @@ const POSCashierInterface: React.FC<SalesProps> = ({
                                     onValueChange={setSelectedCategory}
                                 >
                                     <TabsList className="inline-flex h-10 rounded-md">
-                                        {allCategories.map(
-                                            (category, index) => (
-                                                <TabsTrigger
-                                                    key={index}
-                                                    value={category}
-                                                    className="whitespace-nowrap"
-                                                >
-                                                    {category}
-                                                </TabsTrigger>
-                                            ),
-                                        )}
+                                        {allCategories.map((category) => (
+                                            <TabsTrigger
+                                                key={category.value}
+                                                value={category.value}
+                                                className="whitespace-nowrap"
+                                            >
+                                                {category.label}
+                                            </TabsTrigger>
+                                        ))}
                                     </TabsList>
                                 </Tabs>
 
@@ -992,71 +1165,80 @@ const POSCashierInterface: React.FC<SalesProps> = ({
                     </div>
 
                     {/* Products Grid */}
-                    <ScrollArea className="flex-1">
-                        <div className="grid grid-cols-2 gap-4 p-1 md:grid-cols-3 lg:grid-cols-4">
-                            {filteredProducts.map((product) => (
-                                <Card
-                                    key={product.id}
-                                    className={`cursor-pointer transition-shadow hover:shadow-lg ${product.is_expired ? 'opacity-70' : ''}`}
-                                >
-                                    <Button
-                                        variant="ghost"
-                                        className="flex h-full w-full flex-col items-stretch p-0"
-                                        disabled={product.is_expired}
-                                        onClick={() => addToCart(product)}
-                                    >
-                                        <CardContent className="flex h-full flex-col p-4">
-                                            <div className="mb-3 flex h-32 w-full items-center justify-center rounded-lg bg-muted">
+                    <ScrollArea className="flex-1 min-h-0">
+                        <div className="space-y-4 p-1">
+                            {isLoadingProducts && products.length === 0 ? (
+                                <div className="py-12 text-center text-sm text-muted-foreground">
+                                    Loading products...
+                                </div>
+                            ) : products.length === 0 ? (
+                                <div className="py-8 text-center">
+                                    <p className="text-muted-foreground">
+                                        There are no products for this category!
+                                    </p>
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+                                    {products.map((product) => (
+                                        <button
+                                            key={product.id}
+                                            disabled={product.is_expired}
+                                            onClick={() => addToCart(product)}
+                                            className="group flex flex-col overflow-hidden rounded-2xl border bg-card text-left shadow-none transition-all duration-200 hover:-translate-y-0.5 hover:border-border/60 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
+                                        >
+                                            <div className="relative aspect-[4/3] w-full overflow-hidden bg-muted/40">
                                                 {product.image ? (
                                                     <img
-                                                        src={`storage/${product.image}`}
-                                                        alt={product.name}
-                                                        className="max-h-full max-w-full object-contain"
+                                                        src={resolveImageUrl(
+                                                            product.image,
+                                                        )}
+                                                        alt="preview"
+                                                        className="h-full w-full object-contain transition-transform duration-200 group-hover:scale-105"
                                                     />
                                                 ) : (
-                                                    <ShoppingCart className="h-12 w-12 text-muted-foreground" />
+                                                    <div className="flex h-full w-full items-center justify-center">
+                                                        <ShoppingCart className="h-9 w-9 text-muted-foreground/40" />
+                                                    </div>
                                                 )}
-                                            </div>
 
-                                            <div className="flex-1">
-                                                <h3 className="mb-1 truncate font-semibold text-foreground">
-                                                    {product.name}
-                                                </h3>
-                                                <p className="mb-2 text-sm text-muted-foreground">
-                                                    {product.category}
-                                                </p>
-                                                <div className="mb-2 flex flex-wrap gap-1">
+                                                <div className="absolute left-2.5 top-2.5 flex flex-wrap gap-1.5">
                                                     {(product.inventory_type ??
                                                         (product.has_expiry
                                                             ? 'perishable'
                                                             : 'non-perishable')) ===
                                                     'perishable' ? (
-                                                        <Badge variant="secondary">
+                                                        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800">
                                                             Perishable
-                                                        </Badge>
+                                                        </span>
                                                     ) : (
-                                                        <Badge variant="outline">
+                                                        <span className="rounded-full border border-border/50 bg-muted/60 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
                                                             Non-perishable
-                                                        </Badge>
+                                                        </span>
                                                     )}
-
                                                     {product.is_expired && (
-                                                        <Badge variant="destructive">
+                                                        <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-medium text-red-800">
                                                             Expired
-                                                        </Badge>
+                                                        </span>
                                                     )}
-
                                                     {!product.is_expired &&
                                                         product.is_near_expiry && (
-                                                            <Badge variant="secondary">
-                                                                Near Expiry
-                                                            </Badge>
+                                                            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800">
+                                                                Near expiry
+                                                            </span>
                                                         )}
                                                 </div>
+                                            </div>
 
+                                            <div className="flex flex-1 flex-col gap-1.5 px-3.5 py-3">
+                                                <p className="truncate text-sm font-medium leading-snug text-foreground">
+                                                    {product.name}
+                                                </p>
+                                                <p className="text-xs text-muted-foreground">
+                                                    {product.category}
+                                                </p>
                                                 {product.track_batch &&
                                                     product.selected_batch && (
-                                                        <p className="mb-2 text-xs text-muted-foreground">
+                                                        <p className="text-[11px] text-muted-foreground/70">
                                                             FEFO batch:{' '}
                                                             {
                                                                 product
@@ -1067,29 +1249,39 @@ const POSCashierInterface: React.FC<SalesProps> = ({
                                                     )}
                                             </div>
 
-                                            <div className="flex items-center justify-between">
-                                                <span className="text-lg font-bold text-primary">
-                                                    GHS{product.price}
+                                            <div className="flex items-center justify-between border-t border-border/50 px-3.5 py-2.5">
+                                                <span className="text-sm font-semibold text-foreground">
+                                                    GHS {product.price}
                                                 </span>
-                                                <Badge
-                                                    variant="outline"
-                                                    className="text-xs"
-                                                >
+                                                <span className="rounded-full border border-border/50 bg-muted/50 px-2.5 py-0.5 text-[11px] text-muted-foreground">
                                                     Stock: {product.stock}
-                                                </Badge>
+                                                </span>
                                             </div>
-                                        </CardContent>
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+
+                            {lastPage > currentPage && (
+                                <div className="flex justify-center pb-2">
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        onClick={() =>
+                                            fetchProducts({
+                                                page: currentPage + 1,
+                                                replace: false,
+                                            })
+                                        }
+                                        disabled={isLoadingMoreProducts}
+                                    >
+                                        {isLoadingMoreProducts
+                                            ? 'Loading more...'
+                                            : `Load more products (${totalProducts} total)`}
                                     </Button>
-                                </Card>
-                            ))}
+                                </div>
+                            )}
                         </div>
-                        {filteredProducts.length === 0 && (
-                            <div className="py-8 text-center">
-                                <p className="text-muted-foreground">
-                                    There are no products for this category!
-                                </p>
-                            </div>
-                        )}
                     </ScrollArea>
                 </div>
 

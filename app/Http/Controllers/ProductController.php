@@ -9,6 +9,7 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 
 class ProductController extends Controller
@@ -70,6 +71,7 @@ class ProductController extends Controller
             DB::beginTransaction();
 
             $product = new Product();
+            $storedImagePath = null;
 
             $product->name = $validated['name'];
             $product->category_id = $validated['category'];
@@ -90,8 +92,8 @@ class ProductController extends Controller
 
             if ($request->hasFile('image')) {
                 $image = $request->file('image');
-                $path = $image->store('images', 'public');
-                $product->product_image = $path;
+                $storedImagePath = $image->store('images', 'public');
+                $product->product_image = $storedImagePath;
             }
 
             $product->save();
@@ -115,8 +117,8 @@ class ProductController extends Controller
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error($e->getMessage());
-            if ($request->hasFile('image')) {
-                unlink(public_path('images/' . $request->image));
+            if (!empty($storedImagePath)) {
+                Storage::disk('public')->delete($storedImagePath);
             }
             return redirect()->route('admin.products.index')
                 ->with('error', 'Something went wrong!');
@@ -177,6 +179,7 @@ class ProductController extends Controller
         DB::beginTransaction();
 
         try {
+            $storedImagePath = null;
             $previousTotal = (int) $product->total_quantity;
             $requestedTotal = (int) $validated['totalQuantity'];
 
@@ -203,8 +206,8 @@ class ProductController extends Controller
                 $this->deleteProductImageIfExists($product->product_image);
 
                 $image = $request->file('image');
-                $path = $image->store('images', 'public');
-                $product->product_image = $path;
+                $storedImagePath = $image->store('images', 'public');
+                $product->product_image = $storedImagePath;
             }
 
             $product->save();
@@ -231,6 +234,9 @@ class ProductController extends Controller
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error($e->getMessage());
+            if (!empty($storedImagePath)) {
+                Storage::disk('public')->delete($storedImagePath);
+            }
 
             return redirect()->route('admin.products.index')
                 ->with('error', 'Something went wrong!');
@@ -262,11 +268,7 @@ class ProductController extends Controller
             return;
         }
 
-        $fullPath = public_path('storage/' . ltrim($relativePath, '/'));
-
-        if (is_file($fullPath)) {
-            unlink($fullPath);
-        }
+        Storage::disk('public')->delete($relativePath);
     }
 
     private function fetchProducts()
