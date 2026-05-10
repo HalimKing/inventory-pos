@@ -1192,7 +1192,7 @@ const POSCashierInterface: React.FC<SalesProps> = ({
                                                         src={resolveImageUrl(
                                                             product.image,
                                                         )}
-                                                        alt="preview"
+                                                        alt={"preview"}
                                                         className="h-full w-full object-contain transition-transform duration-200 group-hover:scale-105"
                                                     />
                                                 ) : (
