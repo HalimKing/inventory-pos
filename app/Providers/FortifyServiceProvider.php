@@ -4,11 +4,15 @@ namespace App\Providers;
 
 use App\Actions\Fortify\CreateNewUser;
 use App\Actions\Fortify\ResetUserPassword;
+use App\Listeners\LogAuthenticationEvents;
+use App\Models\User;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Laravel\Fortify\Features;
 use Laravel\Fortify\Fortify;
@@ -28,9 +32,31 @@ class FortifyServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        $this->configureAuthentication();
         $this->configureActions();
         $this->configureViews();
         $this->configureRateLimiting();
+    }
+
+    private function configureAuthentication(): void
+    {
+        Fortify::authenticateUsing(function (Request $request) {
+            $user = User::where('email', $request->email)->first();
+
+            if (! $user || ! Hash::check($request->password, $user->password)) {
+                return null;
+            }
+
+            if ($user->status === 'inactive') {
+                LogAuthenticationEvents::registerInactiveLoginAttempt($request, (string) $request->email);
+
+                throw ValidationException::withMessages([
+                    Fortify::username() => ['Your account has been deactivated. Contact an administrator.'],
+                ]);
+            }
+
+            return $user;
+        });
     }
 
     /**

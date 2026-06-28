@@ -686,9 +686,9 @@ const ExpenseIndexPage = () => {
   }
 
   return (
-    <div className="w-full">
+    <div className="w-full min-w-0 space-y-6 px-4 sm:px-6 lg:px-8">
       {/* Header with Add Expense Button */}
-      <div className="flex items-center justify-between py-4">
+      <div className="flex flex-col gap-4 py-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Expense Management</h1>
           <p className="text-muted-foreground">
@@ -696,7 +696,7 @@ const ExpenseIndexPage = () => {
           </p>
         </div>
         
-        <div className="flex items-center space-x-2">
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
           <Button variant="outline" onClick={exportToCSV}>
             <Download className="mr-2 h-4 w-4" />
             Export CSV
@@ -727,7 +727,7 @@ const ExpenseIndexPage = () => {
                     />
                   </div>
                   
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div className="space-y-2">
                       <Label htmlFor="amount">Amount</Label>
                       <Input
@@ -752,7 +752,7 @@ const ExpenseIndexPage = () => {
                     </div>
                   </div>
                   
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div className="space-y-2">
                       <Label htmlFor="category">Category</Label>
                       <Select name="category" required>
@@ -1009,7 +1009,7 @@ const ExpenseIndexPage = () => {
 
       {/* Quick Status Tabs */}
       <Tabs defaultValue="all" className="mb-6">
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="responsive-tabs-grid-5">
           <TabsTrigger value="all">All Expenses</TabsTrigger>
           <TabsTrigger value="pending">Pending</TabsTrigger>
           <TabsTrigger value="approved">Approved</TabsTrigger>
@@ -1023,21 +1023,21 @@ const ExpenseIndexPage = () => {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex flex-1 flex-col gap-4 lg:flex-row lg:items-center">
             {/* Date Range */}
-            <div className="flex items-center gap-2">
-              <Calendar className="h-4 w-4 text-muted-foreground" />
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <Calendar className="h-4 w-4 shrink-0 text-muted-foreground" />
               <span className="text-sm text-muted-foreground">Date Range:</span>
               <Input
                 type="date"
                 value={dateRange.from?.toISOString().split('T')[0] || ''}
                 onChange={(e) => setDateRange(prev => ({ ...prev, from: e.target.value ? new Date(e.target.value) : null }))}
-                className="w-[140px]"
+                className="w-full sm:w-[140px]"
               />
               <span className="text-muted-foreground">to</span>
               <Input
                 type="date"
                 value={dateRange.to?.toISOString().split('T')[0] || ''}
                 onChange={(e) => setDateRange(prev => ({ ...prev, to: e.target.value ? new Date(e.target.value) : null }))}
-                className="w-[140px]"
+                className="w-full sm:w-[140px]"
               />
             </div>
 
@@ -1171,7 +1171,7 @@ const ExpenseIndexPage = () => {
       </div>
 
       {/* Table */}
-      <div className="overflow-hidden rounded-md border">
+      <div className="overflow-x-auto rounded-md border">
         <Table>
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (

@@ -1,7 +1,9 @@
 import AppLayout from '@/layouts/app-layout';
 import { BreadcrumbItem, SharedData } from '@/types';
 import { Head, usePage } from '@inertiajs/react';
-import axios from 'axios';
+import axios from '@/lib/http';
+import { resetUiLock } from '@/lib/reset-ui-lock';
+import { resolveStorageUrl } from '@/lib/utils';
 import {
     Barcode,
     Check,
@@ -38,6 +40,7 @@ import { OfflineModeIndicator } from '@/components/OfflineModeIndicator';
 import { useConnectivityStatus } from '@/hooks/useOnlineStatus';
 import { posDatabase } from '@/lib/database';
 import { offlineSalesStore } from '@/lib/offlineSalesStore';
+<<<<<<< HEAD
 import { offlineSyncManager } from '@/lib/offlineSyncManager';
 import { toast } from 'react-toastify';
 
@@ -62,6 +65,19 @@ interface Product {
         expiry_date: string;
     } | null;
 }
+=======
+import {
+    cacheAllSalesProducts,
+    filterCachedProducts,
+    mapOfflineProductToSalesProduct,
+    mergeProductsIntoCache,
+    type SalesCatalogProduct,
+} from '@/lib/offlineProductCache';
+import { toast } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
+
+interface Product extends SalesCatalogProduct {}
+>>>>>>> 67f5ce7 (updating the login and other pages UI)
 
 interface CompanySettings {
     logo?: string;
@@ -121,6 +137,7 @@ const CART_STORAGE_KEY = 'pos_cart_data';
 const CUSTOMER_STORAGE_KEY = 'pos_customer_name';
 const DISCOUNT_STORAGE_KEY = 'pos_discount';
 
+<<<<<<< HEAD
 const resolveImageUrl = (imagePath?: string | null) => {
     if (!imagePath) {
         return '';
@@ -132,6 +149,10 @@ const resolveImageUrl = (imagePath?: string | null) => {
 
     return `/storage/${imagePath.replace(/^\/+/, '')}`;
 };
+=======
+const resolveImageUrl = (imagePath?: string | null) =>
+    resolveStorageUrl(imagePath) ?? '';
+>>>>>>> 67f5ce7 (updating the login and other pages UI)
 
 const loadCartFromStorage = (): CartItem[] => {
     try {
@@ -235,6 +256,7 @@ const POSCashierInterface: React.FC<SalesProps> = ({
     const barcodeInputRef = useRef<HTMLInputElement>(null);
     const hasInitializedProductQueryRef = useRef(false);
     const { auth } = usePage<SharedData>().props;
+<<<<<<< HEAD
     const { isOffline } = useConnectivityStatus();
 
     // Initialize database and products on component mount
@@ -272,6 +294,94 @@ const POSCashierInterface: React.FC<SalesProps> = ({
 
         return unsubscribe;
     }, []);
+=======
+    const { isOffline, isOnline } = useConnectivityStatus();
+
+    const productsFetchUrl =
+        auth.user?.role_id === 3
+            ? '/cashier/sales/products/fetch-all-products'
+            : '/admin/sales/products/fetch-all-products';
+
+    const buildProductQueryParams = useCallback(
+        ({
+            page = 1,
+            search = debouncedSearchQuery,
+            categoryId = selectedCategory,
+            inventoryType = inventoryFilter,
+            perPage = 5,
+        }: {
+            page?: number;
+            search?: string;
+            categoryId?: string;
+            inventoryType?: 'all' | 'perishable' | 'non-perishable';
+            perPage?: number;
+        } = {}) => {
+            const params = new URLSearchParams();
+            params.set('page', String(page));
+            params.set('per_page', String(perPage));
+
+            if (search.trim()) {
+                params.set('search', search.trim());
+            }
+
+            if (categoryId && categoryId !== 'all') {
+                params.set('category_id', categoryId);
+            }
+
+            if (inventoryType !== 'all') {
+                params.set('inventory_type', inventoryType);
+            }
+
+            return params;
+        },
+        [debouncedSearchQuery, selectedCategory, inventoryFilter],
+    );
+
+    const fetchCatalogPage = useCallback(
+        async (page: number) => {
+            const params = new URLSearchParams();
+            params.set('page', String(page));
+            params.set('per_page', '20');
+
+            const response = await axios.get<ProductPageResponse>(
+                `${productsFetchUrl}?${params.toString()}`,
+            );
+
+            return {
+                data: response.data.data ?? [],
+                last_page: response.data.last_page ?? page,
+            };
+        },
+        [productsFetchUrl],
+    );
+
+    useEffect(() => {
+        void posDatabase.init();
+    }, []);
+
+    useEffect(() => {
+        if (productsData.length > 0) {
+            void mergeProductsIntoCache(productsData);
+        }
+    }, [productsData]);
+
+    useEffect(() => {
+        if (!isOnline) {
+            return;
+        }
+
+        const refreshCatalogCache = async () => {
+            try {
+                await cacheAllSalesProducts(fetchCatalogPage);
+                console.log('[POS] Product catalog cached for offline use');
+            } catch (error) {
+                console.error('[POS] Failed to cache product catalog:', error);
+            }
+        };
+
+        void refreshCatalogCache();
+    }, [fetchCatalogPage, isOnline]);
+>>>>>>> 67f5ce7 (updating the login and other pages UI)
 
     const focusBarcodeInput = () => {
         window.requestAnimationFrame(() => {
@@ -446,6 +556,31 @@ const POSCashierInterface: React.FC<SalesProps> = ({
             return;
         }
 
+        if (isOffline) {
+            try {
+                await posDatabase.init();
+                const cachedProduct =
+                    await posDatabase.getProductByBarcode(scannedBarcode);
+
+                if (cachedProduct) {
+                    addToCart(mapOfflineProductToSalesProduct(cachedProduct));
+                    playScanSuccessSound();
+                    setBarcodeInput('');
+                    focusBarcodeInput();
+                    return;
+                }
+
+                alert('Product not found in offline cache.');
+            } catch (error) {
+                console.error('[POS] Offline barcode lookup failed:', error);
+                alert('Unable to look up product while offline.');
+            }
+
+            setBarcodeInput('');
+            focusBarcodeInput();
+            return;
+        }
+
         setIsScanning(true);
 
         try {
@@ -610,10 +745,6 @@ const POSCashierInterface: React.FC<SalesProps> = ({
             const response = await axios.post(transactionUrl, transactionData, {
                 headers: {
                     'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN':
-                        document
-                            .querySelector('meta[name="csrf-token"]')
-                            ?.getAttribute('content') || '',
                 },
             });
 
@@ -660,6 +791,7 @@ const POSCashierInterface: React.FC<SalesProps> = ({
         categoryId?: string;
         inventoryType?: 'all' | 'perishable' | 'non-perishable';
     } = {}) => {
+<<<<<<< HEAD
         const url =
             auth.user?.role_id === 3
                 ? '/cashier/sales/products/fetch-all-products'
@@ -680,6 +812,9 @@ const POSCashierInterface: React.FC<SalesProps> = ({
         if (inventoryType !== 'all') {
             params.set('inventory_type', inventoryType);
         }
+=======
+        const perPage = 5;
+>>>>>>> 67f5ce7 (updating the login and other pages UI)
 
         try {
             if (replace || page <= 1) {
@@ -688,13 +823,55 @@ const POSCashierInterface: React.FC<SalesProps> = ({
                 setIsLoadingMoreProducts(true);
             }
 
+<<<<<<< HEAD
             const response = await axios.get<ProductPageResponse>(
                 `${url}?${params.toString()}`,
+=======
+            if (isOffline) {
+                const categoryLabel =
+                    categoryId !== 'all'
+                        ? allCategories.find(
+                              (category) => category.value === categoryId,
+                          )?.label
+                        : undefined;
+
+                const cachedProducts = await filterCachedProducts({
+                    search,
+                    categoryLabel,
+                    inventoryType,
+                });
+                const startIndex = (page - 1) * perPage;
+                const pageProducts = cachedProducts.slice(
+                    startIndex,
+                    startIndex + perPage,
+                );
+
+                setProducts((previousProducts) =>
+                    replace || page <= 1
+                        ? pageProducts
+                        : [...previousProducts, ...pageProducts],
+                );
+                setCurrentPage(page);
+                setLastPage(
+                    Math.max(1, Math.ceil(cachedProducts.length / perPage)),
+                );
+                setTotalProducts(cachedProducts.length);
+                return;
+            }
+
+            const response = await axios.get<ProductPageResponse>(
+                `${productsFetchUrl}?${buildProductQueryParams({ page, search, categoryId, inventoryType, perPage }).toString()}`,
+>>>>>>> 67f5ce7 (updating the login and other pages UI)
             );
 
             const payload = response.data;
             const nextProducts = payload.data ?? [];
 
+<<<<<<< HEAD
+=======
+            await mergeProductsIntoCache(nextProducts);
+
+>>>>>>> 67f5ce7 (updating the login and other pages UI)
             setProducts((previousProducts) =>
                 replace || page <= 1
                     ? nextProducts
@@ -709,7 +886,19 @@ const POSCashierInterface: React.FC<SalesProps> = ({
             setIsLoadingProducts(false);
             setIsLoadingMoreProducts(false);
         }
+<<<<<<< HEAD
     }, [auth.user?.role_id, debouncedSearchQuery, selectedCategory, inventoryFilter]);
+=======
+    }, [
+        allCategories,
+        buildProductQueryParams,
+        debouncedSearchQuery,
+        inventoryFilter,
+        isOffline,
+        productsFetchUrl,
+        selectedCategory,
+    ]);
+>>>>>>> 67f5ce7 (updating the login and other pages UI)
 
     useEffect(() => {
         if (!isCartLoaded) {
@@ -722,7 +911,11 @@ const POSCashierInterface: React.FC<SalesProps> = ({
         }
 
         fetchProducts({ page: 1, replace: true });
+<<<<<<< HEAD
     }, [debouncedSearchQuery, selectedCategory, inventoryFilter, isCartLoaded, fetchProducts]);
+=======
+    }, [debouncedSearchQuery, selectedCategory, inventoryFilter, isCartLoaded, isOffline, fetchProducts]);
+>>>>>>> 67f5ce7 (updating the login and other pages UI)
 
     const printReceipt = (transaction: TransactionData) => {
         const receiptWindow = window.open('', '_blank');
@@ -989,7 +1182,16 @@ const POSCashierInterface: React.FC<SalesProps> = ({
             const result = await saveTransaction();
 
             if (result.success && result.transaction) {
-                setLastTransaction(result.transaction);
+                const savedTransaction = result.transaction;
+                setLastTransaction(savedTransaction);
+
+                // Close Radix payment dialog before native alert/confirm modals.
+                setShowPaymentModal(false);
+                await new Promise<void>((resolve) => {
+                    requestAnimationFrame(() =>
+                        requestAnimationFrame(() => resolve()),
+                    );
+                });
 
                 alert(
                     `Transaction completed successfully!\nTotal: GHS${calculateTotal().toFixed(2)}`,
@@ -1001,9 +1203,13 @@ const POSCashierInterface: React.FC<SalesProps> = ({
 
                 if (shouldPrint) {
                     setTimeout(() => {
-                        printReceipt(result.transaction!);
+                        printReceipt(savedTransaction);
                     }, 100);
                 }
+<<<<<<< HEAD
+=======
+
+>>>>>>> 67f5ce7 (updating the login and other pages UI)
                 fetchProducts({ page: 1, replace: true });
                 resetAfterTransaction();
             } else {
@@ -1038,6 +1244,7 @@ const POSCashierInterface: React.FC<SalesProps> = ({
     };
 
     return (
+<<<<<<< HEAD
         <div className="flex min-h-dvh flex-col bg-background">
             {/* Offline Indicator */}
             <div className="border-b bg-card px-6 py-2">
@@ -1047,6 +1254,17 @@ const POSCashierInterface: React.FC<SalesProps> = ({
             <div className="flex min-h-0 flex-1 overflow-hidden">
                 {/* Products Section */}
                 <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-6">
+=======
+        <div className="flex min-h-dvh flex-col bg-background -mx-4 sm:mx-0">
+            {/* Offline Indicator */}
+            <div className="border-b bg-card px-4 py-2 sm:px-6">
+                <OfflineModeIndicator />
+            </div>
+
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row">
+                {/* Products Section */}
+                <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-4 sm:p-6">
+>>>>>>> 67f5ce7 (updating the login and other pages UI)
                     {/* Search and Categories */}
                     <div className="mb-6 space-y-4">
                         <div className="rounded-md border bg-card p-3">
@@ -1054,7 +1272,7 @@ const POSCashierInterface: React.FC<SalesProps> = ({
                                 <Barcode className="h-4 w-4" />
                                 Barcode Scanner
                             </div>
-                            <div className="flex gap-2">
+                            <div className="flex flex-col gap-2 sm:flex-row">
                                 <Input
                                     ref={barcodeInputRef}
                                     type="text"
@@ -1286,7 +1504,7 @@ const POSCashierInterface: React.FC<SalesProps> = ({
                 </div>
 
                 {/* Cart Section */}
-                <div className="flex w-96 flex-col border-l bg-card">
+                <div className="flex max-h-[50vh] w-full shrink-0 flex-col border-t bg-card lg:max-h-none lg:w-96 lg:max-w-[24rem] lg:border-t-0 lg:border-l">
                     {/* Cart Header */}
                     <div className="border-b p-4">
                         <div className="mb-3 flex items-center justify-between">
@@ -1453,7 +1671,15 @@ const POSCashierInterface: React.FC<SalesProps> = ({
             </div>
 
             {/* Payment Modal */}
-            <Dialog open={showPaymentModal} onOpenChange={setShowPaymentModal}>
+            <Dialog
+                open={showPaymentModal}
+                onOpenChange={(open) => {
+                    setShowPaymentModal(open);
+                    if (!open) {
+                        resetUiLock();
+                    }
+                }}
+            >
                 <DialogContent className="sm:max-w-md">
                     <DialogHeader>
                         <DialogTitle>Payment</DialogTitle>
@@ -1557,7 +1783,15 @@ const POSCashierInterface: React.FC<SalesProps> = ({
             </Dialog>
 
             {/* Receipt Modal */}
-            <Dialog open={showReceiptModal} onOpenChange={setShowReceiptModal}>
+            <Dialog
+                open={showReceiptModal}
+                onOpenChange={(open) => {
+                    setShowReceiptModal(open);
+                    if (!open) {
+                        resetUiLock();
+                    }
+                }}
+            >
                 <DialogContent className="sm:max-w-sm">
                     <DialogHeader>
                         <DialogTitle>Receipt Preview</DialogTitle>

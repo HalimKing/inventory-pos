@@ -1,8 +1,8 @@
 import { useCallback } from 'react';
+import { resetUiLock } from '@/lib/reset-ui-lock';
 
 export function useMobileNavigation() {
     return useCallback(() => {
-        // Remove pointer-events style from body...
-        document.body.style.removeProperty('pointer-events');
+        resetUiLock();
     }, []);
 }

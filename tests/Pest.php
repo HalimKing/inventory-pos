@@ -15,6 +15,14 @@ pest()->extend(Tests\TestCase::class)
     ->use(Illuminate\Foundation\Testing\RefreshDatabase::class)
     ->in('Feature');
 
+pest()->beforeEach(function () {
+    config(['audit.async' => false]);
+
+    if (\App\Models\Role::query()->count() === 0) {
+        $this->seed(\Database\Seeders\RoleSeeder::class);
+    }
+})->in('Feature');
+
 /*
 |--------------------------------------------------------------------------
 | Expectations

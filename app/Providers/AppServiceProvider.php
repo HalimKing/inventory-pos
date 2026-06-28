@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Listeners\LogAuthenticationEvents;
 use App\Models\CompanySetting;
 use Illuminate\Support\ServiceProvider;
 use Inertia\Inertia;
@@ -21,7 +22,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        LogAuthenticationEvents::subscribe();
+
         Inertia::share([
             'company' => function () {
                 // Store it in session only once

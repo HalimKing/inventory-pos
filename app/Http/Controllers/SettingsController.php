@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\CompanySetting;
+use App\Enums\AuditModule;
+use App\Services\AuditLogger;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -53,6 +55,10 @@ class SettingsController extends Controller
         $companySettings = CompanySetting::first();
 
         if ($companySettings) {
+            $oldValues = $companySettings->only([
+                'company_name', 'email', 'phone', 'address', 'country',
+                'return_policy', 'thank_you_message', 'website',
+            ]);
 
              if ($request->hasFile('logoFile')) {
                  if (file_exists($companySettings->logo)) {
@@ -79,6 +85,27 @@ class SettingsController extends Controller
             $companySettings->website = $validatedData['website'];
             $companySettings->save();
              session(['company_info' => $companySettings]);
+
+            AuditLogger::record(
+                eventType: 'system.settings_updated',
+                module: AuditModule::System,
+                description: 'Company settings updated',
+                user: $request->user(),
+                request: $request,
+                resourceType: CompanySetting::class,
+                resourceId: (string) $companySettings->id,
+                oldValues: $oldValues,
+                newValues: [
+                    'company_name' => $companySettings->company_name,
+                    'email' => $companySettings->email,
+                    'phone' => $companySettings->phone,
+                    'address' => $companySettings->address,
+                    'country' => $companySettings->country,
+                    'return_policy' => $companySettings->return_policy,
+                    'thank_you_message' => $companySettings->thank_you_message,
+                    'website' => $companySettings->website,
+                ],
+            );
 
     return redirect()->back()->with('success', 'Company settings updated successfully.');
         } else {

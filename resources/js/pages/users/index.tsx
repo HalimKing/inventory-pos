@@ -72,7 +72,7 @@ export type User = {
   name?: string
   email: string
   phone: string
-  role: "supper admin" | "admin" | "cachier" | "inventory"
+  role: "supper admin" | "admin" | "cashier" | "inventory"
   position: string
   status: "active" | "inactive" | "pending" | "suspended"
   lastLogin: Date | null
@@ -184,7 +184,7 @@ export const userColumns: ColumnDef<User>[] = [
         switch (role) {
           case "admin": return "destructive"
           case "supper admin": return "destructive"
-          case "cachier": return "default"
+          case "cashier": return "default"
           case "inventory": return "secondary"
           default: return "outline"
         }
@@ -194,7 +194,7 @@ export const userColumns: ColumnDef<User>[] = [
         switch (role) {
           case "admin": return <Shield className="h-3 w-3 mr-1" />
           case "supper admin": return <Shield className="h-3 w-3 mr-1" />
-          case "cachier": return <User className="h-3 w-3 mr-1" />
+          case "cashier": return <User className="h-3 w-3 mr-1" />
           case "inventory": return <Archive className="h-3 w-3 mr-1" />
           default: return <User className="h-3 w-3 mr-1" />
         }
@@ -561,7 +561,7 @@ const UserActions = ({ user, onUserUpdate }: UserActionsProps) => {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <Label className="text-sm font-medium">Email</Label>
                 <p className="text-sm">{user.email}</p>
@@ -642,7 +642,7 @@ const UserActions = ({ user, onUserUpdate }: UserActionsProps) => {
               </div>
                 <div className="space-y-2">
                   <Label htmlFor="edit-role">Role</Label>
-                  <Select value={editUserData.role} onValueChange={(value: "supper admin" | "admin" | "cachier" | "inventory") => setEditUserData('role', value)}>
+                  <Select value={editUserData.role} onValueChange={(value: "supper admin" | "admin" | "cashier" | "inventory") => setEditUserData('role', value)}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select role" />
                   </SelectTrigger>
@@ -737,11 +737,13 @@ interface UserForm {
   name: string
   email: string
   phone: string
-  role: "supper admin" | "admin" | "cachier" | "inventory" 
+  role: "supper admin" | "admin" | "cashier" | "inventory" 
   position: string
   department: string
   location: string
   status: "active" | "inactive"
+  password: string
+  password_confirmation: string
 }
 
 interface ResetPasswordForm {
@@ -786,7 +788,7 @@ const UserIndexPage = ({usersData}: UserIndexPageProps) => {
   }
 
   // Add User Form
-  const {data: addUserData, setData: setAddUserData, post, errors, processing} = useForm<UserForm>({
+  const {data: addUserData, setData: setAddUserData, post, errors, processing, reset: resetAddUserForm} = useForm<UserForm>({
     name: '',
     email: '',
     phone: '',
@@ -795,6 +797,8 @@ const UserIndexPage = ({usersData}: UserIndexPageProps) => {
     department: '',
     location: '',
     status: 'active',
+    password: '',
+    password_confirmation: '',
   });
 
   const table = useReactTable({
@@ -824,7 +828,7 @@ const UserIndexPage = ({usersData}: UserIndexPageProps) => {
       if (user.status === 'inactive') acc.inactiveUsers += 1
       if (user.status === 'pending') acc.pendingUsers += 1
       if (user.role === 'admin') acc.adminUsers += 1
-      if (user.role === 'cachier') acc.cachierUsers += 1
+      if (user.role === 'cashier') acc.cashierUsers += 1
       return acc
     }, {
       totalUsers: 0,
@@ -832,7 +836,7 @@ const UserIndexPage = ({usersData}: UserIndexPageProps) => {
       inactiveUsers: 0,
       pendingUsers: 0,
       adminUsers: 0,
-      cachierUsers: 0,
+      cashierUsers: 0,
     })
   }, [users])
 
@@ -867,6 +871,7 @@ const UserIndexPage = ({usersData}: UserIndexPageProps) => {
       onSuccess: () => {
         toast.success('User added successfully!');
         setIsAddUserOpen(false)
+        resetAddUserForm()
         allUsers();
       },
       onError: (errors) => {
@@ -918,7 +923,7 @@ const UserIndexPage = ({usersData}: UserIndexPageProps) => {
   return (
     <div className="w-full">
       {/* Header with Add User Button */}
-      <div className="flex items-center justify-between py-4">
+      <div className="flex flex-col gap-4 py-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">User Management</h1>
           <p className="text-muted-foreground">
@@ -937,7 +942,7 @@ const UserIndexPage = ({usersData}: UserIndexPageProps) => {
             <DialogHeader>
               <DialogTitle>Add New User</DialogTitle>
               <DialogDescription>
-                Create a new user account. The user will receive an email invitation to set up their password.
+                Create a new user account with an initial password. Share credentials securely with the user.
               </DialogDescription>
             </DialogHeader>
             <form onSubmit={handleAddUser}>
@@ -977,10 +982,37 @@ const UserIndexPage = ({usersData}: UserIndexPageProps) => {
                   />
                   {errors.phone && <p className="text-red-500 text-sm">{errors.phone}</p>}
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="password">Password</Label>
+                    <Input
+                      id="password"
+                      name="password"
+                      type="password"
+                      value={addUserData.password}
+                      onChange={(e) => setAddUserData('password', e.target.value)}
+                      placeholder="Minimum 8 characters"
+                      autoComplete="new-password"
+                    />
+                    {errors.password && <p className="text-red-500 text-sm">{errors.password}</p>}
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="password_confirmation">Confirm Password</Label>
+                    <Input
+                      id="password_confirmation"
+                      name="password_confirmation"
+                      type="password"
+                      value={addUserData.password_confirmation}
+                      onChange={(e) => setAddUserData('password_confirmation', e.target.value)}
+                      placeholder="Repeat password"
+                      autoComplete="new-password"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="role">Role</Label>
-                    <Select  value={addUserData.role} onValueChange={(value: "supper admin" | "admin" | "cachier" | "inventory" ) => setAddUserData('role', value)}>
+                    <Select  value={addUserData.role} onValueChange={(value: "supper admin" | "admin" | "cashier" | "inventory" ) => setAddUserData('role', value)}>
                       <SelectTrigger>
                         <SelectValue placeholder="Select role" />
                       </SelectTrigger>
@@ -1206,7 +1238,7 @@ const UserIndexPage = ({usersData}: UserIndexPageProps) => {
       </div>
 
       {/* Table */}
-      <div className="overflow-hidden rounded-md border">
+      <div className="overflow-x-auto rounded-md border">
         <Table>
           <TableHeader>
             {updatedTable.getHeaderGroups().map((headerGroup) => (
@@ -1332,7 +1364,7 @@ export default function UserManagement({usersData}: any) {
   return (
     <AppLayout breadcrumbs={breadcrumbs}>
       <Head title="User Management" />
-      <div className="px-10 lg:px-10 max-sm:px-6">
+      <div className="w-full min-w-0 px-4 sm:px-6 lg:px-8 xl:px-10">
         <UserIndexPage usersData={usersData} />
       </div>
     </AppLayout>

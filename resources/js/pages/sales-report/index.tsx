@@ -1178,17 +1178,17 @@ const SalesReportPage = ({topProductsData, salesByCategoryData, company}: SalesR
   }
 
   return (
-    <div className="w-full space-y-6">
+    <div className="w-full min-w-0 space-y-6 px-4 sm:px-6 lg:px-8">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Sales Report</h1>
+          <h1 className="text-xl font-bold tracking-tight sm:text-2xl">Sales Report</h1>
           <p className="text-muted-foreground">
             Analyze sales performance, track revenue, and monitor profitability
           </p>
         </div>
         
-        <div className="flex gap-2">
+        <div className="flex w-full flex-wrap gap-2 sm:w-auto sm:justify-end">
           <Button onClick={exportToCSV} variant="outline">
             <Download className="mr-2 h-4 w-4" />
             Export All Sales CSV
@@ -1475,7 +1475,7 @@ const SalesReportPage = ({topProductsData, salesByCategoryData, company}: SalesR
           </div>
 
           {/* Transactions Table */}
-          <div className="overflow-hidden rounded-md border">
+          <div className="overflow-x-auto rounded-md border">
             <Table>
               <TableHeader>
                 {transactionTable.getHeaderGroups().map((headerGroup) => (
@@ -1700,7 +1700,7 @@ const SalesReportPage = ({topProductsData, salesByCategoryData, company}: SalesR
           </div>
 
           {/* Sales Table - Show filtered data based on date range */}
-          <div className="overflow-hidden rounded-md border">
+          <div className="overflow-x-auto rounded-md border">
             <Table>
               <TableHeader>
                 {filteredSalesTable.getHeaderGroups().map((headerGroup) => (

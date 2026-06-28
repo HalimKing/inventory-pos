@@ -4,15 +4,12 @@ namespace App\Http\Controllers;
 
 use App\Models\Category;
 use App\Models\Product;
+use App\Enums\AuditModule;
+use App\Services\AuditLogger;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use PhpOffice\PhpSpreadsheet\Reader\Exception;
-use PhpOffice\PhpSpreadsheet\Shared\Date;
-use PhpOffice\PhpSpreadsheet\IOFactory;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
-
 
 class ImportProductController extends Controller
 {
@@ -25,15 +22,16 @@ class ImportProductController extends Controller
      */
     public function import(Request $request)
     {
-        $validator = Validator::make($request->all(), [
-            'csv_file' => 'required|file|mimes:csv,txt|max:10240' // 10MB max
-        ]);
+        $this->authorize('import', Product::class);
 
+        $validator = Validator::make($request->all(), [
+            'csv_file' => 'required|file|mimes:csv,txt|max:10240', // 10MB max
+        ]);
 
         if ($validator->fails()) {
             return response()->json([
                 'message' => 'Validation failed',
-                'errors' => $validator->errors()
+                'errors' => $validator->errors(),
             ], 422);
         }
 
@@ -47,8 +45,8 @@ class ImportProductController extends Controller
             $errors = [];
             $rowNumber = 0;
 
-            if (($handle = fopen($filePath, 'r')) !== FALSE) {
-                while (($data = fgetcsv($handle, 1000, ',')) !== FALSE) {
+            if (($handle = fopen($filePath, 'r')) !== false) {
+                while (($data = fgetcsv($handle, 1000, ',')) !== false) {
                     $rowNumber++;
 
                     // Skip header row (first row)
@@ -64,6 +62,7 @@ class ImportProductController extends Controller
                     // Validate required columns exist
                     if (count($data) < 7) {
                         $errors[] = "Row {$rowNumber}: Insufficient data columns";
+
                         continue;
                     }
 
@@ -103,6 +102,7 @@ class ImportProductController extends Controller
                     if ($productValidator->fails()) {
                         $errorMessages = implode(', ', $productValidator->errors()->all());
                         $errors[] = "Row {$rowNumber}: {$errorMessages}";
+
                         continue;
                     }
 
@@ -110,18 +110,19 @@ class ImportProductController extends Controller
 
                     // Check if supplier exists
                     $supplier = DB::table('suppliers')->where('email', $productData['supplier_email'])->first();
-                    if (!$supplier) {
+                    if (! $supplier) {
                         $errors[] = "Row {$rowNumber}: Supplier with email '{$productData['supplier_email']}' does not exist";
+
                         continue;
                     }
 
                     try {
-                        $product = new Product();
+                        $product = new Product;
 
                         $category = DB::table('categories')->where('name', $productData['category_name'])->first();
-                        if (!$category) {
+                        if (! $category) {
                             // create category if not existed
-                            $category = new Category();
+                            $category = new Category;
                             $category->name = $productData['category_name'];
                             $category->description = 'Imported category';
                             $category->save();
@@ -129,24 +130,25 @@ class ImportProductController extends Controller
 
                         $hasExpiry = filter_var($productData['has_expiry'], FILTER_VALIDATE_BOOLEAN);
                         if ($productData['has_expiry'] === '') {
-                            $hasExpiry = !empty($productData['expiry_date']);
+                            $hasExpiry = ! empty($productData['expiry_date']);
                         }
                         $trackBatch = filter_var($productData['track_batch'], FILTER_VALIDATE_BOOLEAN);
                         $trackSerial = filter_var($productData['track_serial'], FILTER_VALIDATE_BOOLEAN);
 
-                        if ($trackBatch && !$hasExpiry) {
+                        if ($trackBatch && ! $hasExpiry) {
                             $errors[] = "Row {$rowNumber}: Track batch can only be enabled when has_expiry is true";
+
                             continue;
                         }
 
                         if ($hasExpiry && empty($productData['expiry_date'])) {
                             $errors[] = "Row {$rowNumber}: expiry_date is required when has_expiry is enabled";
+
                             continue;
                         }
 
-
                         $product->name = $productData['name'];
-                        $product->barcode = !empty($productData['barcode'])
+                        $product->barcode = ! empty($productData['barcode'])
                             ? $productData['barcode']
                             : null;
                         $product->category_id = is_object($category) ? $category->id : $category;
@@ -155,7 +157,7 @@ class ImportProductController extends Controller
                         $product->cost_price = $productData['cost_price'];
                         $product->total_quantity = $productData['total_quantity'];
                         $product->reorder_level = $productData['reorder_level'] ?? 0;
-                        $product->expiry_date = $hasExpiry && !$trackBatch && !empty($productData['expiry_date'])
+                        $product->expiry_date = $hasExpiry && ! $trackBatch && ! empty($productData['expiry_date'])
                             ? Carbon::parse($productData['expiry_date'])->format('Y-m-d')
                             : null;
                         $product->has_expiry = $hasExpiry;
@@ -189,7 +191,7 @@ class ImportProductController extends Controller
 
                         $importedCount++;
                     } catch (\Exception $e) {
-                        $errors[] = "Row {$rowNumber}: Failed to create product - " . $e->getMessage();
+                        $errors[] = "Row {$rowNumber}: Failed to create product - ".$e->getMessage();
                     }
                 }
                 fclose($handle);
@@ -197,21 +199,35 @@ class ImportProductController extends Controller
 
             DB::commit();
 
+            AuditLogger::record(
+                eventType: 'product.import',
+                module: AuditModule::Products,
+                description: "Imported {$importedCount} products from CSV",
+                user: $request->user(),
+                request: $request,
+                metadata: [
+                    'imported_count' => $importedCount,
+                    'error_count' => count($errors),
+                    'filename' => $file->getClientOriginalName(),
+                ],
+            );
+
             $response = [
                 'message' => "Successfully imported {$importedCount} products",
                 'imported_count' => $importedCount,
             ];
 
-            if (!empty($errors)) {
+            if (! empty($errors)) {
                 $response['errors'] = $errors;
-                $response['message'] .= ". " . count($errors) . " rows failed.";
+                $response['message'] .= '. '.count($errors).' rows failed.';
             }
 
             return response()->json($response);
         } catch (\Exception $e) {
             DB::rollBack();
+
             return response()->json([
-                'message' => 'Error importing file: ' . $e->getMessage()
+                'message' => 'Error importing file: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -219,7 +235,7 @@ class ImportProductController extends Controller
     private function generateBarcode(int $productId): string
     {
         do {
-            $barcode = 'BC-' . $productId . Carbon::now()->format('His') . random_int(100, 999);
+            $barcode = 'BC-'.$productId.Carbon::now()->format('His').random_int(100, 999);
         } while (Product::where('barcode', $barcode)->exists());
 
         return $barcode;

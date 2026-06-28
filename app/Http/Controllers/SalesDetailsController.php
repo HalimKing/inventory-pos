@@ -2,17 +2,16 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
 use App\Models\SaleItem;
+use App\Models\Sales;
 use Carbon\Carbon;
-
-use function Pest\Laravel\session;
 
 class SalesDetailsController extends Controller
 {
-    //
-    public function salesDetails ()
+    public function salesDetails()
     {
+        $this->authorize('viewAny', Sales::class);
+
         $query = SaleItem::with(['product', 'category', 'sale', 'sale.user'])->get();
 
         $sales = $query->map(function ($sale) {
@@ -36,13 +35,14 @@ class SalesDetailsController extends Controller
         return response()->json($sales);
     }
 
-    public function transactions ()
+    public function transactions()
     {
-        //
+        $this->authorize('viewAny', Sales::class);
+
         $query = SaleItem::with(['sale'])->get()->groupBy('sale_id');
-        // map through the grouped data to get transaction details
         $data = $query->map(function ($items, $saleId) {
             $sale = $items->first()->sale;
+
             return [
                 'saleId' => $sale->id,
                 'transactionId' => $sale->transaction_id,
@@ -59,21 +59,27 @@ class SalesDetailsController extends Controller
                 'status' => $sale->status,
             ];
         })->values();
-       
+
         return response()->json($data);
     }
 
-
-    public function saleItems (String $id)
+    public function saleItems(string $id)
     {
+        $sale = Sales::findOrFail($id);
+        $this->authorize('view', $sale);
+
         $saleItems = SaleItem::with(['product', 'category'])->where('sale_id', $id)->get();
-        // session(['company_info'])->g;
+
         return response()->json($saleItems);
     }
 
-    public function transactionDetails (String $id)
+    public function transactionDetails(string $id)
     {
-        $sale = SaleItem::with(['sale.user', 'sale'])->where('sale_id', $id)->first();
-        return response()->json($sale);
+        $sale = Sales::findOrFail($id);
+        $this->authorize('view', $sale);
+
+        $saleItem = SaleItem::with(['sale.user', 'sale'])->where('sale_id', $id)->first();
+
+        return response()->json($saleItem);
     }
 }

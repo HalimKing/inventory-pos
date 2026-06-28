@@ -2,16 +2,19 @@
 
 namespace App\Http\Controllers;
 
+use App\Exceptions\StockValidationException;
 use App\Http\Requests\StoreTransactionRequest;
 use App\Models\CompanySetting;
-use App\Models\Inventory;
 use App\Models\Product;
 use App\Models\ProductBatch;
-use App\Models\SaleItem;
 use App\Models\Sales;
+use App\Enums\AuditModule;
+use App\Services\AuditLogger;
+use App\Services\SalesService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
@@ -19,10 +22,18 @@ use Inertia\Inertia;
 
 class SalesController extends Controller
 {
+    public function __construct(private readonly SalesService $salesService) {}
 
+<<<<<<< HEAD
     //
     public function index(Request $request)
     {
+=======
+    public function index(Request $request)
+    {
+        $this->authorize('create', Sales::class);
+
+>>>>>>> 67f5ce7 (updating the login and other pages UI)
         $productsData = $this->paginateSalesProducts($request)
             ->getCollection()
             ->values()
@@ -130,14 +141,18 @@ class SalesController extends Controller
         DB::beginTransaction();
 
         try {
-            $stockErrors = [];
-            foreach ($request->items as $item) {
-                $product = Product::with('inventory')->find($item['product_id']);
-                if (!$product) {
-                    $stockErrors[] = "Product with ID {$item['product_id']} not found.";
-                    continue;
-                }
+            $sale = $this->salesService->processSale([
+                'items' => $request->items,
+                'subtotal' => $request->subtotal,
+                'discount_amount' => $request->discount_amount,
+                'discount_percentage' => $request->discount_percentage,
+                'amount_paid' => $request->amount_received,
+                'change_amount' => $request->change_amount,
+                'payment_method' => $request->payment_method,
+                'customer_name' => $request->customer_name,
+            ], Auth::id());
 
+<<<<<<< HEAD
                 if ($product->track_batch && $product->has_expiry) {
                     $expiredBatchStock = (int) ProductBatch::where('product_id', $product->id)
                         ->where('quantity', '>', 0)
@@ -283,36 +298,75 @@ class SalesController extends Controller
 
 
             // Commit the transaction
+=======
+>>>>>>> 67f5ce7 (updating the login and other pages UI)
             DB::commit();
+
+            AuditLogger::record(
+                eventType: 'sales.completed',
+                module: AuditModule::Sales,
+                description: "Sale completed: {$sale->transaction_id}",
+                user: Auth::user(),
+                request: $request,
+                resourceType: Sales::class,
+                resourceId: $sale->id,
+                newValues: [
+                    'transaction_id' => $sale->transaction_id,
+                    'grand_total' => $sale->grand_total,
+                    'payment_method' => $sale->payment_method,
+                ],
+            );
+
             return response()->json(['success' => true, 'message' => 'Transaction saved successfully.']);
+        } catch (StockValidationException $e) {
+            DB::rollBack();
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Stock validation failed',
+                'errors' => $e->errors,
+            ], 422);
         } catch (\Exception $e) {
             DB::rollBack();
+<<<<<<< HEAD
             Log::error('Transaction failed: ' . $e->getMessage(), [
                 'request_data' => $request->all(),
                 'user_id' => Auth::id(),
                 'trace' => $e->getTraceAsString()
+=======
+            Log::error('Transaction failed: '.$e->getMessage(), [
+                'user_id' => Auth::id(),
+                'trace' => $e->getTraceAsString(),
+>>>>>>> 67f5ce7 (updating the login and other pages UI)
             ]);
 
             return response()->json([
                 'success' => false,
                 'message' => 'Transaction failed. Please try again.',
-                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
+                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error',
             ], 500);
         }
     }
 
     public function fetchAllProducts(Request $request): JsonResponse
     {
+<<<<<<< HEAD
+=======
+        $this->authorize('viewAny', Product::class);
+
+>>>>>>> 67f5ce7 (updating the login and other pages UI)
         return response()->json($this->paginateSalesProducts($request));
     }
 
     public function fetchProductByBarcode(string $barcode): JsonResponse
     {
+        $this->authorize('viewAny', Product::class);
+
         $product = Product::with(['category', 'inventory'])
             ->where('barcode', $barcode)
             ->first();
 
-        if (!$product) {
+        if (! $product) {
             return response()->json([
                 'message' => 'Product not found',
             ], 404);
@@ -353,7 +407,7 @@ class SalesController extends Controller
                     'batch_number' => $selectedBatch->batch_number,
                     'expiry_date' => $selectedBatch->expiry_date,
                 ],
-                'available_batches' => $availableBatches->map(fn($batch) => [
+                'available_batches' => $availableBatches->map(fn ($batch) => [
                     'id' => $batch->id,
                     'batch_number' => $batch->batch_number,
                     'quantity' => (int) $batch->quantity,
@@ -388,7 +442,7 @@ class SalesController extends Controller
             'expiry_date' => $expiryDate,
             'is_expired' => $isExpired,
             'is_near_expiry' => $expiryDate
-                ? Carbon::today()->diffInDays(Carbon::parse($expiryDate), false) <= 30 && !$isExpired
+                ? Carbon::today()->diffInDays(Carbon::parse($expiryDate), false) <= 30 && ! $isExpired
                 : false,
             'inventory_type' => $product->has_expiry ? 'perishable' : 'non-perishable',
             'selected_batch' => null,
@@ -398,6 +452,7 @@ class SalesController extends Controller
 
     /**
      * Sync offline sales from POS
+<<<<<<< HEAD
      * Handles multiple sales that were created while offline
      */
     public function syncOfflineSales(Request $request): JsonResponse
@@ -591,14 +646,98 @@ class SalesController extends Controller
     }
 
     private function availableStock(Product $product): int
+=======
+     */
+    public function syncOfflineSales(Request $request): JsonResponse
+>>>>>>> 67f5ce7 (updating the login and other pages UI)
     {
-        if ($product->track_batch && $product->has_expiry) {
-            return (int) ProductBatch::where('product_id', $product->id)
-                ->where('quantity', '>', 0)
-                ->whereDate('expiry_date', '>=', Carbon::today())
-                ->sum('quantity');
-        }
+        $this->authorize('syncOffline', Sales::class);
 
-        return (int) ($product->inventory?->quantity ?? $product->quantity_left ?? 0);
+        $validated = $request->validate([
+            'sales' => 'required|array|min:1',
+            'sales.*.items' => 'required|array|min:1',
+            'sales.*.items.*.product_id' => 'required|string',
+            'sales.*.items.*.product_name' => 'required|string',
+            'sales.*.items.*.quantity' => 'required|integer|min:1',
+            'sales.*.items.*.price' => 'required|numeric',
+            'sales.*.subtotal' => 'required|numeric',
+            'sales.*.discount_amount' => 'numeric|min:0',
+            'sales.*.discount_percentage' => 'numeric|min:0',
+            'sales.*.grand_total' => 'required|numeric',
+            'sales.*.amount_paid' => 'required|numeric',
+            'sales.*.payment_method' => 'required|string',
+            'sales.*.customer_name' => 'string|nullable',
+            'sales.*.created_at' => 'required|date',
+            'sales.*.offline_id' => 'required|string',
+        ]);
+
+        DB::beginTransaction();
+
+        try {
+            $results = [
+                'success' => true,
+                'synced_count' => 0,
+                'failed_count' => 0,
+                'errors' => [],
+            ];
+
+            foreach ($validated['sales'] as $saleData) {
+                try {
+                    if ($this->salesService->isDuplicateOfflineSale($saleData['offline_id'])) {
+                        Log::info('Duplicate offline sale detected', ['offline_id' => $saleData['offline_id']]);
+                        $results['synced_count']++;
+
+                        continue;
+                    }
+
+                    $this->salesService->processSale([
+                        'items' => $saleData['items'],
+                        'subtotal' => $saleData['subtotal'],
+                        'discount_amount' => $saleData['discount_amount'] ?? 0,
+                        'discount_percentage' => $saleData['discount_percentage'] ?? 0,
+                        'grand_total' => $saleData['grand_total'],
+                        'amount_paid' => $saleData['amount_paid'],
+                        'payment_method' => $saleData['payment_method'],
+                        'customer_name' => $saleData['customer_name'] ?? null,
+                    ], Auth::id(), $saleData['offline_id']);
+
+                    $results['synced_count']++;
+                    Log::info('Offline sale synced successfully', ['offline_id' => $saleData['offline_id']]);
+                } catch (StockValidationException $e) {
+                    $results['failed_count']++;
+                    $results['success'] = false;
+                    $results['errors'][] = [
+                        'offline_id' => $saleData['offline_id'] ?? 'unknown',
+                        'message' => implode('; ', $e->errors),
+                    ];
+                } catch (\Exception $e) {
+                    $results['failed_count']++;
+                    $results['success'] = false;
+                    $results['errors'][] = [
+                        'offline_id' => $saleData['offline_id'] ?? 'unknown',
+                        'message' => $e->getMessage(),
+                    ];
+                    Log::error('Failed to sync offline sale', [
+                        'offline_id' => $saleData['offline_id'] ?? 'unknown',
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+
+            DB::commit();
+
+            return response()->json($results, $results['success'] ? 200 : 422);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Batch sync failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Batch sync failed: '.$e->getMessage(),
+            ], 500);
+        }
     }
 }

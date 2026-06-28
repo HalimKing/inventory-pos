@@ -8,11 +8,13 @@ use Illuminate\Support\Str;
 class Sales extends Model
 {
     protected $keyType = 'string';
+
     public $incrementing = false;
 
     protected $fillable = [
+        'transaction_id',
         'customer_name',
-        'subtotal',
+        'sub_total',
         'user_id',
         'amount_paid',
         'change_amount',

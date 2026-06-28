@@ -1,6 +1,8 @@
 <?php
 
-use App\Http\Controllers\Auth\LoginController;
+use App\Http\Controllers\Admin\SystemLogController;
+use App\Http\Controllers\Cashier\CashierReportController;
+use App\Http\Controllers\Cashier\CashierTransactionController;
 use App\Http\Controllers\CashierDashboardController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\DashboardController;
@@ -13,11 +15,9 @@ use App\Http\Controllers\SalesReportController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\SupplierController;
 use App\Http\Controllers\UserController;
-use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use Laravel\Fortify\Features;
-
 
 /*
 |--------------------------------------------------------------------------
@@ -32,7 +32,6 @@ Route::get('/', function () {
     return redirect()->route('login');
 })->name('home');
 
-
 /*
 |--------------------------------------------------------------------------
 | Authenticated & Verified Routes
@@ -45,7 +44,10 @@ Route::get('dashboard', [DashboardController::class, 'index'])->middleware(['aut
 
 Route::middleware(['auth', 'role:supper admin,admin,cashier'])->group(function () {
     Route::get('api/products/barcode/{barcode}', [SalesController::class, 'fetchProductByBarcode']);
+<<<<<<< HEAD
     Route::get('api/categories/fetch', [CategoryController::class, 'fetchCategories']);
+=======
+>>>>>>> 67f5ce7 (updating the login and other pages UI)
     Route::post('api/sales/sync', [SalesController::class, 'syncOfflineSales']);
 });
 
@@ -59,10 +61,17 @@ Route::middleware(['auth', 'role:cashier'])->prefix('cashier')->name('cashier.')
         Route::post('save/transaction', [SalesController::class, 'saveTransactions']);
         Route::get('/', [SalesController::class, 'index']);
     });
+
+    Route::get('transactions', [CashierTransactionController::class, 'index'])->name('transactions.index');
+    Route::get('api/transactions', [CashierTransactionController::class, 'list']);
+    Route::get('api/transactions/{sale}', [CashierTransactionController::class, 'show']);
+    Route::post('api/transactions/{sale}/reprint-log', [CashierTransactionController::class, 'logReprint']);
+    Route::post('api/transactions/{sale}/resend-receipt', [CashierTransactionController::class, 'resendReceipt']);
+
+    Route::get('reports', [CashierReportController::class, 'index'])->name('reports.index');
+    Route::get('api/reports/data', [CashierReportController::class, 'data']);
+    Route::post('api/reports/export-log', [CashierReportController::class, 'logExport']);
 });
-
-
-
 
 Route::middleware(['auth', 'verified'])->prefix('admin')->name('admin.')->group(function () {
 
@@ -99,6 +108,16 @@ Route::middleware(['auth', 'verified'])->prefix('admin')->name('admin.')->group(
             Route::get('index', [SettingsController::class, 'index'])->name('settings.index');
             Route::post('update', [SettingsController::class, 'update']);
         });
+
+        Route::get('system-logs', [SystemLogController::class, 'index'])->name('system-logs.index');
+        Route::middleware('audit.api')->prefix('api/system-logs')->group(function () {
+            Route::get('/', [SystemLogController::class, 'list']);
+            Route::get('/export', [SystemLogController::class, 'export']);
+            Route::get('/{systemLog}', [SystemLogController::class, 'show']);
+            Route::put('/settings/retention', [SystemLogController::class, 'updateSettings']);
+            Route::post('/purge', [SystemLogController::class, 'purge']);
+            Route::post('/backup', [SystemLogController::class, 'runBackup']);
+        });
     });
 
     // Shared inventory management access (supper admin + admin + inventory)
@@ -128,5 +147,4 @@ Route::middleware(['auth', 'verified'])->prefix('admin')->name('admin.')->group(
     });
 });
 
-
-require __DIR__ . '/settings.php';
+require __DIR__.'/settings.php';

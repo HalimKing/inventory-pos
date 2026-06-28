@@ -660,9 +660,9 @@ const SupplierIndexPage = ({
     };
 
     return (
-        <div className="w-full px-10">
+        <div className="w-full min-w-0 px-4 sm:px-6 lg:px-8 xl:px-10">
             {/* Header with Add Supplier Button */}
-            <div className="flex items-center justify-between py-4">
+            <div className="flex flex-col gap-4 py-4 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                     <h1 className="text-2xl font-bold tracking-tight">
                         Supplier Management
@@ -698,10 +698,10 @@ const SupplierIndexPage = ({
                             <div className="space-y-6 py-2">
                                 {/* Company Name */}
                                 <div className="space-y-2">
-                                    <div className="grid grid-cols-4 items-start gap-4">
+                                        <div className="responsive-form-row">
                                         <Label
                                             htmlFor="companyName"
-                                            className="pt-2 text-right font-medium text-gray-700"
+                                            className="responsive-form-label pt-2 font-medium text-gray-700"
                                         >
                                             Company Name
                                         </Label>
@@ -723,10 +723,10 @@ const SupplierIndexPage = ({
 
                                 {/* Contact Person */}
                                 <div className="space-y-2">
-                                    <div className="grid grid-cols-4 items-start gap-4">
+                                        <div className="responsive-form-row">
                                         <Label
                                             htmlFor="contactPerson"
-                                            className="pt-2 text-right font-medium text-gray-700"
+                                            className="responsive-form-label pt-2 font-medium text-gray-700"
                                         >
                                             Contact Person
                                         </Label>
@@ -748,10 +748,10 @@ const SupplierIndexPage = ({
 
                                 {/* Email */}
                                 <div className="space-y-2">
-                                    <div className="grid grid-cols-4 items-start gap-4">
+                                        <div className="responsive-form-row">
                                         <Label
                                             htmlFor="email"
-                                            className="pt-2 text-right font-medium text-gray-700"
+                                            className="responsive-form-label pt-2 font-medium text-gray-700"
                                         >
                                             Email
                                         </Label>
@@ -774,10 +774,10 @@ const SupplierIndexPage = ({
 
                                 {/* Phone */}
                                 <div className="space-y-2">
-                                    <div className="grid grid-cols-4 items-start gap-4">
+                                        <div className="responsive-form-row">
                                         <Label
                                             htmlFor="phone"
-                                            className="pt-2 text-right font-medium text-gray-700"
+                                            className="responsive-form-label pt-2 font-medium text-gray-700"
                                         >
                                             Phone
                                         </Label>
@@ -799,10 +799,10 @@ const SupplierIndexPage = ({
 
                                 {/* Address */}
                                 <div className="space-y-2">
-                                    <div className="grid grid-cols-4 items-start gap-4">
+                                        <div className="responsive-form-row">
                                         <Label
                                             htmlFor="address"
-                                            className="pt-2 text-right font-medium text-gray-700"
+                                            className="responsive-form-label pt-2 font-medium text-gray-700"
                                         >
                                             Address
                                         </Label>
@@ -824,10 +824,10 @@ const SupplierIndexPage = ({
 
                                 {/* Status */}
                                 <div className="space-y-2">
-                                    <div className="grid grid-cols-4 items-start gap-4">
+                                        <div className="responsive-form-row">
                                         <Label
                                             htmlFor="status"
-                                            className="pt-2 text-right font-medium text-gray-700"
+                                            className="responsive-form-label pt-2 font-medium text-gray-700"
                                         >
                                             Status
                                         </Label>
@@ -897,10 +897,10 @@ const SupplierIndexPage = ({
                             <div className="space-y-6 py-2">
                                 {/* Company Name */}
                                 <div className="space-y-2">
-                                    <div className="grid grid-cols-4 items-start gap-4">
+                                        <div className="responsive-form-row">
                                         <Label
                                             htmlFor="edit-companyName"
-                                            className="pt-2 text-right font-medium text-gray-700"
+                                            className="responsive-form-label pt-2 font-medium text-gray-700"
                                         >
                                             Company Name
                                         </Label>
@@ -923,10 +923,10 @@ const SupplierIndexPage = ({
 
                                 {/* Contact Person */}
                                 <div className="space-y-2">
-                                    <div className="grid grid-cols-4 items-start gap-4">
+                                        <div className="responsive-form-row">
                                         <Label
                                             htmlFor="edit-contactPerson"
-                                            className="pt-2 text-right font-medium text-gray-700"
+                                            className="responsive-form-label pt-2 font-medium text-gray-700"
                                         >
                                             Contact Person
                                         </Label>
@@ -949,10 +949,10 @@ const SupplierIndexPage = ({
 
                                 {/* Email */}
                                 <div className="space-y-2">
-                                    <div className="grid grid-cols-4 items-start gap-4">
+                                        <div className="responsive-form-row">
                                         <Label
                                             htmlFor="edit-email"
-                                            className="pt-2 text-right font-medium text-gray-700"
+                                            className="responsive-form-label pt-2 font-medium text-gray-700"
                                         >
                                             Email
                                         </Label>
@@ -976,10 +976,10 @@ const SupplierIndexPage = ({
 
                                 {/* Phone */}
                                 <div className="space-y-2">
-                                    <div className="grid grid-cols-4 items-start gap-4">
+                                        <div className="responsive-form-row">
                                         <Label
                                             htmlFor="edit-phone"
-                                            className="pt-2 text-right font-medium text-gray-700"
+                                            className="responsive-form-label pt-2 font-medium text-gray-700"
                                         >
                                             Phone
                                         </Label>
@@ -1002,10 +1002,10 @@ const SupplierIndexPage = ({
 
                                 {/* Address */}
                                 <div className="space-y-2">
-                                    <div className="grid grid-cols-4 items-start gap-4">
+                                        <div className="responsive-form-row">
                                         <Label
                                             htmlFor="edit-address"
-                                            className="pt-2 text-right font-medium text-gray-700"
+                                            className="responsive-form-label pt-2 font-medium text-gray-700"
                                         >
                                             Address
                                         </Label>
@@ -1028,10 +1028,10 @@ const SupplierIndexPage = ({
 
                                 {/* Status */}
                                 <div className="space-y-2">
-                                    <div className="grid grid-cols-4 items-start gap-4">
+                                        <div className="responsive-form-row">
                                         <Label
                                             htmlFor="edit-status"
-                                            className="pt-2 text-right font-medium text-gray-700"
+                                            className="responsive-form-label pt-2 font-medium text-gray-700"
                                         >
                                             Status
                                         </Label>
@@ -1463,7 +1463,7 @@ const SupplierIndexPage = ({
             </div>
 
             {/* Table */}
-            <div className="overflow-hidden rounded-md border">
+            <div className="overflow-x-auto rounded-md border">
                 <Table>
                     <TableHeader>
                         {table.getHeaderGroups().map((headerGroup) => (

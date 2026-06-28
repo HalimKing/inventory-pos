@@ -291,7 +291,7 @@ const CashierDashboard: React.FC = () => {
 
   if (loading && !dashboardData) {
     return (
-      <div className="min-h-screen bg-background p-8">
+      <div className="min-h-screen bg-background p-4 sm:p-6 lg:p-8">
         <div className="max-w-7xl mx-auto space-y-8">
           <div className="flex justify-between items-center">
             <Skeleton className="h-10 w-64" />
@@ -318,14 +318,14 @@ const CashierDashboard: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-background p-8">
+    <div className="min-h-screen bg-background p-4 sm:p-6 lg:p-8">
       <div className="max-w-7xl mx-auto space-y-8">
         {/* Header */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div className="space-y-1">
             <h1 className="text-3xl font-bold tracking-tight">Cashier Dashboard</h1>
             <p className="text-muted-foreground">Welcome back, {data.cashierInfo.name}!</p>
-            <div className="flex items-center gap-4 pt-2">
+            <div className="flex flex-wrap items-center gap-2 pt-2 sm:gap-4">
               <Badge variant="outline" className="flex items-center gap-1">
                 <User className="h-3 w-3" />
                 ID: {data.cashierInfo.id}

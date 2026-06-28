@@ -13,12 +13,20 @@ return new class extends Migration
     {
         Schema::table('sales', function (Blueprint $table) {
             // Add offline sync ID for duplicate prevention
+<<<<<<< HEAD
             if (!Schema::hasColumn('sales', 'offline_sync_id')) {
+=======
+            if (! Schema::hasColumn('sales', 'offline_sync_id')) {
+>>>>>>> 67f5ce7 (updating the login and other pages UI)
                 $table->string('offline_sync_id')->nullable()->unique()->after('transaction_id');
             }
 
             // Add synced timestamp
+<<<<<<< HEAD
             if (!Schema::hasColumn('sales', 'synced_at')) {
+=======
+            if (! Schema::hasColumn('sales', 'synced_at')) {
+>>>>>>> 67f5ce7 (updating the login and other pages UI)
                 $table->timestamp('synced_at')->nullable()->after('updated_at');
             }
         });

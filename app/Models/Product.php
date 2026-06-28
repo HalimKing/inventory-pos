@@ -19,7 +19,7 @@ class Product extends Model
         'total_quantity',
         'profit',
         'total_profit',
-        'image',
+        'product_image',
         'expiry_date',
         'quantity_left',
         'quantity_sold',

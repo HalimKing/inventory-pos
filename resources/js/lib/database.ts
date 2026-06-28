@@ -197,6 +197,7 @@ class PosDatabase {
   async deleteSyncedSales(): Promise<void> {
     if (!this.db) await this.init();
 
+<<<<<<< HEAD
     const syncedSales = await this.getUnsyncedSales();
     const tx = this.db!.transaction('offline_sales', 'readwrite');
 
@@ -205,6 +206,22 @@ class PosDatabase {
         await tx.store.delete(sale.id);
       }
     }
+=======
+    const syncedSales = (await this.getAllOfflineSales()).filter(
+      (sale) => sale.synced,
+    );
+
+    if (syncedSales.length === 0) {
+      return;
+    }
+
+    const tx = this.db!.transaction('offline_sales', 'readwrite');
+
+    for (const sale of syncedSales) {
+      await tx.store.delete(sale.id);
+    }
+
+>>>>>>> 67f5ce7 (updating the login and other pages UI)
     await tx.done;
   }
 

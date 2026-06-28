@@ -50,6 +50,18 @@ test('users with two factor enabled are redirected to two factor challenge', fun
     $this->assertGuest();
 });
 
+test('inactive users can not authenticate using the login screen', function () {
+    $user = User::factory()->withoutTwoFactor()->inactive()->create();
+
+    $response = $this->post(route('login.store'), [
+        'email' => $user->email,
+        'password' => 'password',
+    ]);
+
+    $this->assertGuest();
+    $response->assertSessionHasErrors('email');
+});
+
 test('users can not authenticate with invalid password', function () {
     $user = User::factory()->create();
 

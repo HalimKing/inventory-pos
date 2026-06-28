@@ -70,6 +70,7 @@ import {
     TableRow,
 } from '@/components/ui/table';
 import AppLayout from '@/layouts/app-layout';
+import { resolveStorageUrl } from '@/lib/utils';
 import { BreadcrumbItem, FlashMessages } from '@/types';
 import { Head, useForm, usePage } from '@inertiajs/react';
 import axios from 'axios';
@@ -200,7 +201,11 @@ export const createColumns = (
                 <div className="h-10 w-10 overflow-hidden rounded-md border">
                     {resolvedImageUrl ? (
                         <img
+<<<<<<< HEAD
                             src={resolvedImageUrl}
+=======
+                            src={resolveStorageUrl(imageUrl) ?? undefined}
+>>>>>>> 67f5ce7 (updating the login and other pages UI)
                             alt="Product"
                             className="h-full w-full object-cover"
                         />
@@ -747,7 +752,7 @@ const ProducIndexPage = ({ productData }: { productData: Product[] }) => {
         });
         // Set initial image preview
         if (product.image) {
-            setImagePreview(product.image);
+            setImagePreview(resolveStorageUrl(product.image));
         }
 
         // Fetch categories and suppliers
@@ -1393,9 +1398,9 @@ const ProducIndexPage = ({ productData }: { productData: Product[] }) => {
     }, [products]);
 
     return (
-        <div className="w-full px-10 max-sm:px-6 lg:px-10">
+        <div className="w-full min-w-0 px-4 sm:px-6 lg:px-8 xl:px-10">
             {/* Header with Add Product Button */}
-            <div className="flex items-center justify-between py-4">
+            <div className="flex flex-col gap-4 py-4 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                     <h1 className="text-2xl font-bold tracking-tight">
                         Product Inventory
@@ -1405,7 +1410,7 @@ const ProducIndexPage = ({ productData }: { productData: Product[] }) => {
                     </p>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
                     {/* Download Template Button */}
                     <Button
                         variant="outline"
@@ -1454,10 +1459,10 @@ const ProducIndexPage = ({ productData }: { productData: Product[] }) => {
                                 <div className="space-y-6 py-2">
                                     <div className="grid gap-4 py-4">
                                         {/* Name Input */}
-                                        <div className="grid grid-cols-4 items-start gap-4">
+                                        <div className="responsive-form-row">
                                             <Label
                                                 htmlFor="name"
-                                                className="text-right"
+                                                className="responsive-form-label"
                                             >
                                                 Name
                                             </Label>
@@ -1482,10 +1487,10 @@ const ProducIndexPage = ({ productData }: { productData: Product[] }) => {
                                                 )}
                                             </div>
                                         </div>
-                                        <div className="grid grid-cols-4 items-start gap-4">
+                                        <div className="responsive-form-row">
                                             <Label
                                                 htmlFor="barcode"
-                                                className="text-right"
+                                                className="responsive-form-label"
                                             >
                                                 Barcode
                                             </Label>
@@ -1526,10 +1531,10 @@ const ProducIndexPage = ({ productData }: { productData: Product[] }) => {
                                             </div>
                                         </div>
                                         {/* Category Combobox */}
-                                        <div className="grid grid-cols-4 items-start gap-4">
+                                        <div className="responsive-form-row">
                                             <Label
                                                 htmlFor="category"
-                                                className="text-right"
+                                                className="responsive-form-label"
                                             >
                                                 Category
                                             </Label>
@@ -1555,10 +1560,10 @@ const ProducIndexPage = ({ productData }: { productData: Product[] }) => {
                                             </div>
                                         </div>
                                         {/* Supplier Combobox */}
-                                        <div className="grid grid-cols-4 items-start gap-4">
+                                        <div className="responsive-form-row">
                                             <Label
                                                 htmlFor="supplier"
-                                                className="text-right"
+                                                className="responsive-form-label"
                                             >
                                                 Supplier
                                             </Label>
@@ -1585,10 +1590,10 @@ const ProducIndexPage = ({ productData }: { productData: Product[] }) => {
                                             </div>
                                         </div>
                                         {/* Selling Price Input */}
-                                        <div className="grid grid-cols-4 items-start gap-4">
+                                        <div className="responsive-form-row">
                                             <Label
                                                 htmlFor="sellingPrice"
-                                                className="text-right"
+                                                className="responsive-form-label"
                                             >
                                                 Selling Price
                                             </Label>
@@ -1618,10 +1623,10 @@ const ProducIndexPage = ({ productData }: { productData: Product[] }) => {
                                             </div>
                                         </div>
                                         {/* Cost Price Input */}
-                                        <div className="grid grid-cols-4 items-start gap-4">
+                                        <div className="responsive-form-row">
                                             <Label
                                                 htmlFor="costPrice"
-                                                className="text-right"
+                                                className="responsive-form-label"
                                             >
                                                 Cost Price
                                             </Label>
@@ -1651,10 +1656,10 @@ const ProducIndexPage = ({ productData }: { productData: Product[] }) => {
                                             </div>
                                         </div>
                                         {/* Total Quantity Input */}
-                                        <div className="grid grid-cols-4 items-start gap-4">
+                                        <div className="responsive-form-row">
                                             <Label
                                                 htmlFor="totalQuantity"
-                                                className="text-right"
+                                                className="responsive-form-label"
                                             >
                                                 Total Qty
                                             </Label>
@@ -1682,8 +1687,8 @@ const ProducIndexPage = ({ productData }: { productData: Product[] }) => {
                                             </div>
                                         </div>
                                         {/* Tracking Configuration */}
-                                        <div className="grid grid-cols-4 items-start gap-4">
-                                            <Label className="pt-1 text-right">
+                                        <div className="responsive-form-row">
+                                            <Label className="responsive-form-label pt-1">
                                                 Tracking
                                             </Label>
                                             <div className="col-span-3 space-y-3">
@@ -1777,10 +1782,10 @@ const ProducIndexPage = ({ productData }: { productData: Product[] }) => {
                                         </div>
                                         {/* Expiry Date Input */}
                                         {data.hasExpiry && (
-                                            <div className="grid grid-cols-4 items-start gap-4">
+                                            <div className="responsive-form-row">
                                                 <Label
                                                     htmlFor="expiryDate"
-                                                    className="text-right"
+                                                    className="responsive-form-label"
                                                 >
                                                     Expiry Date
                                                 </Label>
@@ -1807,10 +1812,10 @@ const ProducIndexPage = ({ productData }: { productData: Product[] }) => {
                                             </div>
                                         )}
                                         {/* Reorder Level Input */}
-                                        <div className="grid grid-cols-4 items-start gap-4">
+                                        <div className="responsive-form-row">
                                             <Label
                                                 htmlFor="reorderLevel"
-                                                className="text-right"
+                                                className="responsive-form-label"
                                             >
                                                 Reorder Level
                                             </Label>
@@ -1839,10 +1844,10 @@ const ProducIndexPage = ({ productData }: { productData: Product[] }) => {
                                             </div>
                                         </div>
                                         {/* Image Upload with Preview (Add Form) */}
-                                        <div className="grid grid-cols-4 items-start gap-4">
+                                        <div className="responsive-form-row">
                                             <Label
                                                 htmlFor="productImage"
-                                                className="pt-2 text-right"
+                                                className="responsive-form-label pt-2"
                                             >
                                                 Product Image
                                             </Label>
@@ -1960,7 +1965,15 @@ const ProducIndexPage = ({ productData }: { productData: Product[] }) => {
                             <div className="absolute -bottom-16 left-1/2 z-20 -translate-x-1/2">
                                 <div className="h-32 w-32 overflow-hidden rounded-2xl bg-white shadow-xl ring-4 ring-white">
                                     <img
+<<<<<<< HEAD
                                         src={resolveImageUrl(selectedProduct.image)}
+=======
+                                        src={
+                                            resolveStorageUrl(
+                                                selectedProduct.image,
+                                            ) ?? undefined
+                                        }
+>>>>>>> 67f5ce7 (updating the login and other pages UI)
                                         alt={selectedProduct.name}
                                         className="h-full w-full object-cover"
                                     />
@@ -3433,7 +3446,7 @@ const ProducIndexPage = ({ productData }: { productData: Product[] }) => {
             </div>
 
             {/* Table */}
-            <div className="overflow-hidden rounded-md border">
+            <div className="overflow-x-auto rounded-md border">
                 <Table>
                     <TableHeader>
                         {table.getHeaderGroups().map((headerGroup) => (

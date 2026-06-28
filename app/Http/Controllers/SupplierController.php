@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\Supplier;
+use App\Enums\AuditModule;
+use App\Services\AuditLogger;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
@@ -16,18 +18,33 @@ class SupplierController extends Controller
     {
         //
         $suppliersData = $this->fetchSuppliers(); // Fixed: Added $this->
+
         return Inertia::render('suppliers/Index', compact('suppliersData'));
     }
 
     /**
      * Show the form for creating a new resource.
      */
-    public function updateStatus(String $id)
+    public function updateStatus(string $id)
     {
         //
         $supplier = Supplier::find($id);
+        $previousStatus = $supplier->status;
         $supplier->status = $supplier->status == 'active' ? 'inactive' : 'active';
         $supplier->save();
+
+        AuditLogger::record(
+            eventType: 'inventory.supplier_status_changed',
+            module: AuditModule::Inventory,
+            description: "Supplier status changed: {$supplier->company_name}",
+            user: request()->user(),
+            request: request(),
+            resourceType: Supplier::class,
+            resourceId: (string) $supplier->id,
+            oldValues: ['status' => $previousStatus],
+            newValues: ['status' => $supplier->status],
+        );
+
         return redirect()->route('admin.suppliers.index')
             ->with('success', 'Supplier status updated Successfully!');
     }
@@ -44,17 +61,29 @@ class SupplierController extends Controller
             'address' => 'string|nullable',
             'phone' => 'required|string|max:20',
             'contactPerson' => 'required|string',
-            'status' => 'required|string'
+            'status' => 'required|string',
         ]);
 
-        $supplier = new Supplier();
+        $supplier = new Supplier;
         $supplier->name = $request->contactPerson;
         $supplier->company_name = $request->companyName;
-        $supplier->email = $request->phone;
+        $supplier->email = $request->email;
         $supplier->address = $request->address;
         $supplier->phone = $request->phone;
         $supplier->status = $request->status;
         $supplier->save();
+
+        AuditLogger::record(
+            eventType: 'inventory.supplier_created',
+            module: AuditModule::Inventory,
+            description: "Supplier created: {$supplier->company_name}",
+            user: $request->user(),
+            request: $request,
+            resourceType: Supplier::class,
+            resourceId: (string) $supplier->id,
+            newValues: ['company_name' => $supplier->company_name, 'email' => $supplier->email],
+        );
+
         return redirect()->route('admin.suppliers.index')
             ->with('success', 'Supplier created Successfully!');
     }
@@ -83,22 +112,43 @@ class SupplierController extends Controller
         //
         $request->validate([
             'companyName' => 'required|string|max:255',
-            'email' => 'required|email|unique:suppliers,email,' . $id,
+            'email' => 'required|email|unique:suppliers,email,'.$id,
             'address' => 'string|nullable',
             'phone' => 'required|string|max:20',
             'contactPerson' => 'required|string',
-            'status' => 'required|string'
+            'status' => 'required|string',
         ]);
 
-
         $supplier = Supplier::find($id);
+        $oldValues = [
+            'company_name' => $supplier->company_name,
+            'email' => $supplier->email,
+            'status' => $supplier->status,
+        ];
         $supplier->name = $request->contactPerson;
         $supplier->company_name = $request->companyName;
-        $supplier->email = $request->phone;
+        $supplier->email = $request->email;
         $supplier->address = $request->address;
         $supplier->phone = $request->phone;
         $supplier->status = $request->status;
         $supplier->save();
+
+        AuditLogger::record(
+            eventType: 'inventory.supplier_updated',
+            module: AuditModule::Inventory,
+            description: "Supplier updated: {$supplier->company_name}",
+            user: $request->user(),
+            request: $request,
+            resourceType: Supplier::class,
+            resourceId: (string) $supplier->id,
+            oldValues: $oldValues,
+            newValues: [
+                'company_name' => $supplier->company_name,
+                'email' => $supplier->email,
+                'status' => $supplier->status,
+            ],
+        );
+
         return redirect()->route('admin.suppliers.index')
             ->with('success', 'Supplier updated Successfully!');
     }
@@ -110,17 +160,29 @@ class SupplierController extends Controller
     {
         try {
             $supplier = Supplier::findOrFail($id);
+
+            AuditLogger::record(
+                eventType: 'inventory.supplier_deleted',
+                module: AuditModule::Inventory,
+                description: "Supplier deleted: {$supplier->company_name}",
+                user: request()->user(),
+                request: request(),
+                resourceType: Supplier::class,
+                resourceId: (string) $supplier->id,
+                oldValues: ['company_name' => $supplier->company_name],
+            );
+
             $supplier->delete();
 
             return response()->json(['message' => 'Supplier deleted successfully.']);
         } catch (\Illuminate\Database\QueryException $e) {
-            Log::error('Failed to delete supplier due to related records: ' . $e->getMessage());
+            Log::error('Failed to delete supplier due to related records: '.$e->getMessage());
 
             return response()->json([
-                'error' => 'Supplier cannot be deleted because it is linked to other records.'
+                'error' => 'Supplier cannot be deleted because it is linked to other records.',
             ], 409);
         } catch (\Exception $e) {
-            Log::error('Failed to delete supplier: ' . $e->getMessage());
+            Log::error('Failed to delete supplier: '.$e->getMessage());
 
             return response()->json(['error' => 'Something went wrong.'], 500);
         }
@@ -169,13 +231,13 @@ class SupplierController extends Controller
         // Debug on backend
         Log::info('Fetching categories', [
             'count' => $suppliers->count(),
-            'categories' => $suppliers->toArray()
+            'categories' => $suppliers->toArray(),
         ]);
 
         $suppliersData = $suppliers->map(function ($supplier) {
             return [
                 'value' => $supplier->id,
-                'label' => $supplier->company_name
+                'label' => $supplier->company_name,
             ];
         });
 

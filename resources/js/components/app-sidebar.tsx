@@ -1,142 +1,41 @@
-import { NavMain } from '@/components/nav-main';
-import { NavUser } from '@/components/nav-user';
+import { SidebarBrand } from '@/components/sidebar/sidebar-brand';
+import { SidebarFooterActions } from '@/components/sidebar/sidebar-footer-actions';
+import { SidebarNavGroups } from '@/components/sidebar/sidebar-nav-groups';
+import { SidebarUserProfile } from '@/components/sidebar/sidebar-user-profile';
 import {
     Sidebar,
     SidebarContent,
     SidebarFooter,
     SidebarHeader,
-    SidebarMenu,
-    SidebarMenuButton,
-    SidebarMenuItem,
+    SidebarSeparator,
 } from '@/components/ui/sidebar';
-import { dashboard } from '@/routes';
-import { type NavItem, type SharedData } from '@/types';
-import { Link, usePage } from '@inertiajs/react';
-import {
-    DollarSign,
-    Folder,
-    LayoutGrid,
-    Settings,
-    ShoppingCart,
-    Users,
-} from 'lucide-react';
-import AppLogo from './app-logo';
-
-// cashier sidebar items
-const cashierNavItems: NavItem[] = [
-    {
-        title: 'Dashboard',
-        href: '/cashier/dashboard',
-        icon: LayoutGrid,
-    },
-    {
-        title: 'Sales',
-        href: '/cashier/sales',
-        icon: ShoppingCart,
-    },
-];
-
-const inventoryNavItems: NavItem[] = [
-    {
-        title: 'Products',
-        href: '/admin/products',
-        icon: Folder,
-    },
-    {
-        title: 'Categories',
-        href: '/admin/categories',
-        icon: Folder,
-    },
-    {
-        title: 'Suppliers',
-        href: '/admin/suppliers',
-        icon: Users,
-    },
-];
-
-const mainNavItems: NavItem[] = [
-    {
-        title: 'Dashboard',
-        href: '/admin/dashboard',
-        icon: LayoutGrid,
-    },
-    // sales
-    {
-        title: 'Sales',
-        href: '/admin/sales',
-        icon: ShoppingCart,
-    },
-    // products
-    {
-        title: 'Products',
-        href: '/admin/products',
-        icon: Folder,
-    },
-    // categories
-    {
-        title: 'Categories',
-        href: '/admin/categories',
-        icon: Folder,
-    },
-    // sales reports
-    {
-        title: 'Sales Reports',
-        href: '/admin/sale-reports',
-        icon: DollarSign,
-    },
-    // expenses
-    // suppliers
-    {
-        title: 'Suppliers',
-        href: '/admin/suppliers',
-        icon: Users,
-    },
-    // users
-    {
-        title: 'Users',
-        href: '/admin/users',
-        icon: Users,
-    },
-    // settings
-    {
-        title: 'Settings',
-        href: '/admin/settings/index',
-        icon: Settings,
-    },
-];
+import { getSidebarNavGroups } from '@/config/sidebar-navigation';
+import { type SharedData } from '@/types';
+import { usePage } from '@inertiajs/react';
 
 export function AppSidebar() {
     const { auth } = usePage<SharedData>().props;
+    const roleId = Number(auth.user.role_id ?? 0);
+    const navGroups = getSidebarNavGroups(roleId);
 
     return (
-        <Sidebar collapsible="icon" variant="inset">
-            <SidebarHeader>
-                <SidebarMenu>
-                    <SidebarMenuItem>
-                        <SidebarMenuButton size="lg" asChild>
-                            <Link href={dashboard()} prefetch>
-                                <AppLogo />
-                            </Link>
-                        </SidebarMenuButton>
-                    </SidebarMenuItem>
-                </SidebarMenu>
+        <Sidebar
+            collapsible="icon"
+            variant="inset"
+            className="border-white/10 bg-[#1E3A8A] text-white [&_[data-sidebar=sidebar]]:bg-[#1E3A8A]"
+        >
+            <SidebarHeader className="gap-3 p-3 pb-2">
+                <SidebarBrand />
+                <SidebarSeparator className="bg-white/10" />
+                <SidebarUserProfile user={auth.user} />
             </SidebarHeader>
 
-            <SidebarContent>
-                <NavMain
-                    items={
-                        auth.user.role_id === 3
-                            ? cashierNavItems
-                            : auth.user.role_id === 4
-                              ? inventoryNavItems
-                              : mainNavItems
-                    }
-                />
+            <SidebarContent className="gap-0 scroll-smooth">
+                <SidebarNavGroups groups={navGroups} />
             </SidebarContent>
 
-            <SidebarFooter>
-                {/* <NavFooter items={footerNavItems} className="mt-auto" /> */}
-                <NavUser />
+            <SidebarFooter className="gap-0 p-0">
+                <SidebarFooterActions />
             </SidebarFooter>
         </Sidebar>
     );

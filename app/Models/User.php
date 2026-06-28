@@ -3,6 +3,7 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use App\Enums\RoleName;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -22,6 +23,9 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
+        'phone',
+        'role_id',
+        'status',
     ];
 
     /**
@@ -39,6 +43,36 @@ class User extends Authenticatable
     public function role()
     {
         return $this->belongsTo(Role::class);
+    }
+
+    public function roleName(): ?string
+    {
+        return $this->role?->name;
+    }
+
+    public function hasRole(RoleName|string ...$roles): bool
+    {
+        $currentRole = strtolower((string) $this->roleName());
+
+        foreach ($roles as $role) {
+            $expected = $role instanceof RoleName ? $role->value : strtolower($role);
+
+            if ($currentRole === $expected) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public function isSuperAdmin(): bool
+    {
+        return $this->hasRole(RoleName::SuperAdmin);
+    }
+
+    public function isAdminUser(): bool
+    {
+        return $this->hasRole(RoleName::SuperAdmin, RoleName::Admin);
     }
 
     /**

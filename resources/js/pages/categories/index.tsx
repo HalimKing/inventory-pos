@@ -580,7 +580,7 @@ const CategoryIndexPage = ({
     return (
         <div className="w-full p-4 sm:p-6 lg:p-10">
             {/* Header with Add Category Button */}
-            <div className="flex items-center justify-between py-4">
+            <div className="flex flex-col gap-4 py-4 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                     <h1 className="text-2xl font-bold tracking-tight">
                         Categories
@@ -1093,7 +1093,7 @@ const CategoryIndexPage = ({
             </div>
 
             {/* Table */}
-            <div className="overflow-hidden rounded-md border">
+            <div className="overflow-x-auto rounded-md border">
                 <Table>
                     <TableHeader>
                         {table.getHeaderGroups().map((headerGroup) => (

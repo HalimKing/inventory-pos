@@ -2,12 +2,14 @@ import { useCallback, useEffect, useState } from 'react';
 
 export type Appearance = 'light' | 'dark' | 'system';
 
+const DEFAULT_APPEARANCE: Appearance = 'light';
+
 const prefersDark = () => {
     if (typeof window === 'undefined') {
         return false;
     }
 
-    return window.matchMedia('(prefers-color-scheme: light)').matches;
+    return window.matchMedia('(prefers-color-scheme: dark)').matches;
 };
 
 const setCookie = (name: string, value: string, days = 365) => {
@@ -37,12 +39,13 @@ const mediaQuery = () => {
 
 const handleSystemThemeChange = () => {
     const currentAppearance = localStorage.getItem('appearance') as Appearance;
-    applyTheme(currentAppearance || 'system');
+    applyTheme(currentAppearance || DEFAULT_APPEARANCE);
 };
 
 export function initializeTheme() {
     const savedAppearance =
-        (localStorage.getItem('appearance') as Appearance) || 'system';
+        (localStorage.getItem('appearance') as Appearance) ||
+        DEFAULT_APPEARANCE;
 
     applyTheme(savedAppearance);
 
@@ -51,7 +54,7 @@ export function initializeTheme() {
 }
 
 export function useAppearance() {
-    const [appearance, setAppearance] = useState<Appearance>('system');
+    const [appearance, setAppearance] = useState<Appearance>(DEFAULT_APPEARANCE);
 
     const updateAppearance = useCallback((mode: Appearance) => {
         setAppearance(mode);
@@ -71,7 +74,7 @@ export function useAppearance() {
         ) as Appearance | null;
 
         // eslint-disable-next-line react-hooks/set-state-in-effect
-        updateAppearance(savedAppearance || 'system');
+        updateAppearance(savedAppearance || DEFAULT_APPEARANCE);
 
         return () =>
             mediaQuery()?.removeEventListener(

@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Models\Inventory;
 use App\Models\Product;
 use App\Models\ProductBatch;
+use App\Enums\AuditModule;
+use App\Services\AuditLogger;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -19,8 +21,10 @@ class ProductController extends Controller
      */
     public function index()
     {
-        //
+        $this->authorize('viewAny', Product::class);
+
         $products = $this->fetchProducts();
+
         return Inertia::render('products/index', compact('products'));
     }
 
@@ -37,6 +41,8 @@ class ProductController extends Controller
      */
     public function store(Request $request)
     {
+        $this->authorize('create', Product::class);
+
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'category' => 'required|integer|max:255|exists:categories,id',
@@ -57,7 +63,7 @@ class ProductController extends Controller
         $trackBatch = (bool) ($validated['trackBatch'] ?? false);
         $trackSerial = (bool) ($validated['trackSerial'] ?? false);
 
-        if ($trackBatch && !$hasExpiry) {
+        if ($trackBatch && ! $hasExpiry) {
             return redirect()->route('admin.products.index')
                 ->withErrors(['trackBatch' => 'Batch tracking requires expiry tracking to be enabled.']);
         }
@@ -70,8 +76,12 @@ class ProductController extends Controller
         try {
             DB::beginTransaction();
 
+<<<<<<< HEAD
             $product = new Product();
             $storedImagePath = null;
+=======
+            $product = new Product;
+>>>>>>> 67f5ce7 (updating the login and other pages UI)
 
             $product->name = $validated['name'];
             $product->category_id = $validated['category'];
@@ -80,7 +90,7 @@ class ProductController extends Controller
             $product->total_quantity = (int) $validated['totalQuantity'];
             $product->selling_price = (float) $validated['sellingPrice'];
             $product->cost_price = (float) $validated['costPrice'];
-            $product->expiry_date = $hasExpiry && !$trackBatch ? $validated['expiryDate'] : null;
+            $product->expiry_date = $hasExpiry && ! $trackBatch ? $validated['expiryDate'] : null;
             $product->has_expiry = $hasExpiry;
             $product->track_batch = $trackBatch;
             $product->track_serial = $trackSerial;
@@ -112,14 +122,35 @@ class ProductController extends Controller
 
             DB::commit();
 
+            AuditLogger::record(
+                eventType: 'product.created',
+                module: AuditModule::Products,
+                description: "Product created: {$product->name}",
+                user: $request->user(),
+                request: $request,
+                resourceType: Product::class,
+                resourceId: (string) $product->id,
+                newValues: [
+                    'name' => $product->name,
+                    'total_quantity' => $product->total_quantity,
+                    'selling_price' => $product->selling_price,
+                ],
+            );
+
             return redirect()->route('admin.products.index')
                 ->with('success', 'Product created Successfully!');
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error($e->getMessage());
+<<<<<<< HEAD
             if (!empty($storedImagePath)) {
                 Storage::disk('public')->delete($storedImagePath);
+=======
+            if ($request->hasFile('image')) {
+                unlink(public_path('images/'.$request->image));
+>>>>>>> 67f5ce7 (updating the login and other pages UI)
             }
+
             return redirect()->route('admin.products.index')
                 ->with('error', 'Something went wrong!');
         }
@@ -146,11 +177,13 @@ class ProductController extends Controller
      */
     public function update(Request $request, Product $product)
     {
+        $this->authorize('update', $product);
+
         $validated = $request->validate([
-            'name' => 'required|string|max:255|unique:products,name,' . $product->id,
+            'name' => 'required|string|max:255|unique:products,name,'.$product->id,
             'category' => 'required|integer|max:255|exists:categories,id',
             'supplier' => 'required|integer|max:255|exists:suppliers,id',
-            'barcode' => 'nullable|string|max:100|unique:products,barcode,' . $product->id,
+            'barcode' => 'nullable|string|max:100|unique:products,barcode,'.$product->id,
             'totalQuantity' => 'required|integer|min:0',
             'sellingPrice' => 'required|numeric|min:1|max:1000000.00',
             'costPrice' => 'required|numeric|min:1|max:10000000.00',
@@ -166,7 +199,7 @@ class ProductController extends Controller
         $trackBatch = (bool) ($validated['trackBatch'] ?? false);
         $trackSerial = (bool) ($validated['trackSerial'] ?? false);
 
-        if ($trackBatch && !$hasExpiry) {
+        if ($trackBatch && ! $hasExpiry) {
             return redirect()->route('admin.products.index')
                 ->withErrors(['trackBatch' => 'Batch tracking requires expiry tracking to be enabled.']);
         }
@@ -189,14 +222,14 @@ class ProductController extends Controller
             $product->barcode = $validated['barcode'] ?? $product->barcode;
             $product->selling_price = (float) $validated['sellingPrice'];
             $product->cost_price = (float) $validated['costPrice'];
-            $product->expiry_date = $hasExpiry && !$trackBatch ? $validated['expiryDate'] : null;
+            $product->expiry_date = $hasExpiry && ! $trackBatch ? $validated['expiryDate'] : null;
             $product->has_expiry = $hasExpiry;
             $product->track_batch = $trackBatch;
             $product->track_serial = $trackSerial;
             $product->profit = $product->selling_price - $product->cost_price;
             $product->reorder_level = (int) $validated['reorderLevel'];
 
-            if (!$trackBatch) {
+            if (! $trackBatch) {
                 $delta = $requestedTotal - $previousTotal;
                 $product->quantity_left = max(0, (int) $product->quantity_left + $delta);
                 $product->total_quantity = $requestedTotal;
@@ -229,6 +262,21 @@ class ProductController extends Controller
 
             DB::commit();
 
+            AuditLogger::record(
+                eventType: 'product.updated',
+                module: AuditModule::Products,
+                description: "Product updated: {$product->name}",
+                user: $request->user(),
+                request: $request,
+                resourceType: Product::class,
+                resourceId: (string) $product->id,
+                newValues: [
+                    'name' => $product->name,
+                    'total_quantity' => $product->total_quantity,
+                    'selling_price' => $product->selling_price,
+                ],
+            );
+
             return redirect()->route('admin.products.index')
                 ->with('success', 'Product updated Successfully!');
         } catch (\Exception $e) {
@@ -248,9 +296,21 @@ class ProductController extends Controller
      */
     public function destroy(Product $product)
     {
-        //
+        $this->authorize('delete', $product);
+
         // delete image
         try {
+            AuditLogger::record(
+                eventType: 'product.deleted',
+                module: AuditModule::Products,
+                description: "Product deleted: {$product->name}",
+                user: request()->user(),
+                request: request(),
+                resourceType: Product::class,
+                resourceId: (string) $product->id,
+                oldValues: ['name' => $product->name],
+            );
+
             $this->deleteProductImageIfExists($product->product_image);
 
             $product->delete();
@@ -258,6 +318,7 @@ class ProductController extends Controller
             return response()->json(['message' => 'Product deleted successfully.']);
         } catch (\Exception $e) {
             Log::error($e->getMessage());
+
             return response()->json(['error' => 'Something went wrong.'], 500);
         }
     }
@@ -268,7 +329,15 @@ class ProductController extends Controller
             return;
         }
 
+<<<<<<< HEAD
         Storage::disk('public')->delete($relativePath);
+=======
+        $fullPath = public_path('storage/'.ltrim($relativePath, '/'));
+
+        if (is_file($fullPath)) {
+            unlink($fullPath);
+        }
+>>>>>>> 67f5ce7 (updating the login and other pages UI)
     }
 
     private function fetchProducts()
@@ -290,6 +359,7 @@ class ProductController extends Controller
             } else {
                 $status = 'in-stock';
             }
+
             return [
                 'id' => $product->id,
                 'name' => $product->name,
@@ -318,7 +388,7 @@ class ProductController extends Controller
                     ->where('quantity', '>', 0)
                     ->sortBy('expiry_date')
                     ->values()
-                    ->map(fn($batch) => [
+                    ->map(fn ($batch) => [
                         'id' => $batch->id,
                         'batchNumber' => $batch->batch_number,
                         'quantity' => $batch->quantity,
@@ -326,17 +396,22 @@ class ProductController extends Controller
                     ]),
             ];
         });
+
         return $productsData;
     }
 
     public function fetchProductsData()
     {
+        $this->authorize('viewAny', Product::class);
+
         return response()->json($this->fetchProducts());
     }
 
     public function storeBatch(Request $request, Product $product)
     {
-        if (!$product->has_expiry || !$product->track_batch) {
+        $this->authorize('manageBatches', $product);
+
+        if (! $product->has_expiry || ! $product->track_batch) {
             return response()->json([
                 'message' => 'This product does not use batch tracking.',
             ], 422);
@@ -375,20 +450,22 @@ class ProductController extends Controller
 
     public function updateBatch(Request $request, Product $product, ProductBatch $batch)
     {
+        $this->authorize('manageBatches', $product);
+
         if ($batch->product_id !== $product->id) {
             return response()->json([
                 'message' => 'Batch does not belong to this product.',
             ], 422);
         }
 
-        if (!$product->has_expiry || !$product->track_batch) {
+        if (! $product->has_expiry || ! $product->track_batch) {
             return response()->json([
                 'message' => 'This product does not use batch tracking.',
             ], 422);
         }
 
         $validated = $request->validate([
-            'batchNumber' => 'required|string|max:255|unique:product_batches,batch_number,' . $batch->id,
+            'batchNumber' => 'required|string|max:255|unique:product_batches,batch_number,'.$batch->id,
             'quantity' => 'required|integer|min:0',
             'expiryDate' => 'required|date',
         ]);
@@ -418,6 +495,8 @@ class ProductController extends Controller
 
     public function destroyBatch(Product $product, ProductBatch $batch)
     {
+        $this->authorize('manageBatches', $product);
+
         if ($batch->product_id !== $product->id) {
             return response()->json([
                 'message' => 'Batch does not belong to this product.',
@@ -518,13 +597,13 @@ class ProductController extends Controller
 
     private function effectiveExpiryDate(Product $product): ?string
     {
-        if (!$product->has_expiry) {
+        if (! $product->has_expiry) {
             return null;
         }
 
         if ($product->track_batch || $product->productBatches->isNotEmpty()) {
             $nearestBatch = $product->productBatches
-                ->filter(fn($batch) => $batch->quantity > 0 && !empty($batch->expiry_date))
+                ->filter(fn ($batch) => $batch->quantity > 0 && ! empty($batch->expiry_date))
                 ->sortBy('expiry_date')
                 ->first();
 
@@ -536,13 +615,13 @@ class ProductController extends Controller
 
     private function generateBatchNumber(Product $product): string
     {
-        return 'B-' . $product->id . '-' . Carbon::now()->format('YmdHis') . '-' . random_int(100, 999);
+        return 'B-'.$product->id.'-'.Carbon::now()->format('YmdHis').'-'.random_int(100, 999);
     }
 
     private function generateBarcode(int $productId): string
     {
         do {
-            $barcode = 'BC-' . $productId . Carbon::now()->format('His') . random_int(100, 999);
+            $barcode = 'BC-'.$productId.Carbon::now()->format('His').random_int(100, 999);
         } while (Product::where('barcode', $barcode)->exists());
 
         return $barcode;
