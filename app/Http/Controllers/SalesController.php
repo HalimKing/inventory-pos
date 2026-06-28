@@ -16,7 +16,6 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 
@@ -24,16 +23,10 @@ class SalesController extends Controller
 {
     public function __construct(private readonly SalesService $salesService) {}
 
-<<<<<<< HEAD
-    //
-    public function index(Request $request)
-    {
-=======
     public function index(Request $request)
     {
         $this->authorize('create', Sales::class);
 
->>>>>>> 67f5ce7 (updating the login and other pages UI)
         $productsData = $this->paginateSalesProducts($request)
             ->getCollection()
             ->values()
@@ -152,154 +145,6 @@ class SalesController extends Controller
                 'customer_name' => $request->customer_name,
             ], Auth::id());
 
-<<<<<<< HEAD
-                if ($product->track_batch && $product->has_expiry) {
-                    $expiredBatchStock = (int) ProductBatch::where('product_id', $product->id)
-                        ->where('quantity', '>', 0)
-                        ->whereDate('expiry_date', '<', Carbon::today())
-                        ->sum('quantity');
-
-                    $availableBatches = ProductBatch::where('product_id', $product->id)
-                        ->where('quantity', '>', 0)
-                        ->whereDate('expiry_date', '>=', Carbon::today())
-                        ->orderBy('expiry_date')
-                        ->lockForUpdate()
-                        ->get();
-
-                    $availableStock = (int) $availableBatches->sum('quantity');
-
-                    if ($availableStock <= 0 && $expiredBatchStock > 0) {
-                        $stockErrors[] = "{$product->name} has only expired batches and cannot be sold.";
-                        continue;
-                    }
-
-                    if ($availableStock < $item['quantity']) {
-                        $stockErrors[] = "Insufficient stock for {$product->name}. Available: {$availableStock}, Requested: {$item['quantity']}";
-                    }
-                    continue;
-                }
-
-                $inventory = Inventory::where('product_id', $product->id)->lockForUpdate()->first();
-                $availableStock = (int) ($inventory?->quantity ?? $product->quantity_left ?? 0);
-
-                if ($product->has_expiry) {
-                    $expiryDate = $inventory?->expiry_date ?? $product->expiry_date;
-                    if ($expiryDate && Carbon::parse($expiryDate)->isPast()) {
-                        $stockErrors[] = "{$product->name} is expired and cannot be sold.";
-                        continue;
-                    }
-                }
-
-                if ($availableStock < $item['quantity']) {
-                    $stockErrors[] = "Insufficient stock for {$product->name}. Available: {$availableStock}, Requested: {$item['quantity']}";
-                }
-            }
-
-            if (!empty($stockErrors)) {
-                DB::rollBack();
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Stock validation failed',
-                    'errors' => $stockErrors
-                ], 422);
-            }
-
-            // Save Transaction
-            Log::info('Saving transaction', $request->all());
-
-            // calculate grand total in
-            $grandTotal = round($request->subtotal - $request->discount_amount, 2);
-
-            $sale = new Sales();
-            $sale->transaction_id = 'TNX-' . uniqid(10, false);
-            $sale->user_id = Auth::id();
-            $sale->sub_total = $request->subtotal;
-            $sale->discount_amount = $request->discount_amount;
-            $sale->discount_percentage = $request->discount_percentage;
-            $sale->grand_total = $grandTotal;
-            $sale->status = 'completed';
-            $sale->amount_paid = $request->amount_received;
-            $sale->change_amount = $request->change_amount;
-            $sale->payment_method = $request->payment_method;
-            $sale->customer_name = $request->customer_name;
-            $sale->save();
-
-            // Update Stock
-            foreach ($request->items as $item) {
-                $product = Product::with('inventory')->findOrFail($item['product_id']);
-                $remaining = (int) $item['quantity'];
-
-                if ($product->track_batch && $product->has_expiry) {
-                    $batches = ProductBatch::where('product_id', $product->id)
-                        ->where('quantity', '>', 0)
-                        ->whereDate('expiry_date', '>=', Carbon::today())
-                        ->orderBy('expiry_date')
-                        ->lockForUpdate()
-                        ->get();
-
-                    foreach ($batches as $batch) {
-                        if ($remaining <= 0) {
-                            break;
-                        }
-
-                        $deductQty = min($remaining, (int) $batch->quantity);
-                        $batch->quantity -= $deductQty;
-                        $batch->save();
-
-                        $remaining -= $deductQty;
-
-                        $saleItems = new SaleItem();
-                        $saleItems->product_id = $product->id;
-                        $saleItems->product_batch_id = $batch->id;
-                        $saleItems->category_id = $product->category_id;
-                        $saleItems->sale_id = $sale->id;
-                        $saleItems->product_name = $product->name;
-                        $saleItems->quantity = $deductQty;
-                        $saleItems->price = $product->selling_price;
-                        $saleItems->total_amount = $deductQty * $product->selling_price;
-                        $saleItems->quantity_left = max(0, (int) ($product->quantity_left - $item['quantity']));
-                        $saleItems->quantity_sold = (int) $product->quantity_sold + $item['quantity'];
-                        $saleItems->profit = $product->profit * $deductQty;
-                        $saleItems->expiry_date = $batch->expiry_date;
-                        $saleItems->save();
-                    }
-                } else {
-                    $inventory = Inventory::where('product_id', $product->id)->lockForUpdate()->first();
-
-                    if ($inventory) {
-                        $inventory->quantity = max(0, (int) $inventory->quantity - $remaining);
-                        if (!$product->has_expiry) {
-                            $inventory->expiry_date = null;
-                        }
-                        $inventory->save();
-                    }
-
-                    $expiryDate = $inventory?->expiry_date ?? $product->expiry_date;
-
-                    $saleItems = new SaleItem();
-                    $saleItems->product_id = $product->id;
-                    $saleItems->category_id = $product->category_id;
-                    $saleItems->sale_id = $sale->id;
-                    $saleItems->product_name = $product->name;
-                    $saleItems->quantity = $item['quantity'];
-                    $saleItems->price = $product->selling_price;
-                    $saleItems->total_amount = $item['subtotal'];
-                    $saleItems->quantity_left = max(0, (int) ($product->quantity_left - $item['quantity']));
-                    $saleItems->quantity_sold = (int) $product->quantity_sold + $item['quantity'];
-                    $saleItems->profit = $product->profit * $item['quantity'];
-                    $saleItems->expiry_date = $expiryDate;
-                    $saleItems->save();
-                }
-
-                $product->quantity_left = $this->availableStock($product);
-                $product->quantity_sold += $item['quantity'];
-                $product->save();
-            }
-
-
-            // Commit the transaction
-=======
->>>>>>> 67f5ce7 (updating the login and other pages UI)
             DB::commit();
 
             AuditLogger::record(
@@ -328,16 +173,9 @@ class SalesController extends Controller
             ], 422);
         } catch (\Exception $e) {
             DB::rollBack();
-<<<<<<< HEAD
-            Log::error('Transaction failed: ' . $e->getMessage(), [
-                'request_data' => $request->all(),
-                'user_id' => Auth::id(),
-                'trace' => $e->getTraceAsString()
-=======
             Log::error('Transaction failed: '.$e->getMessage(), [
                 'user_id' => Auth::id(),
                 'trace' => $e->getTraceAsString(),
->>>>>>> 67f5ce7 (updating the login and other pages UI)
             ]);
 
             return response()->json([
@@ -350,11 +188,8 @@ class SalesController extends Controller
 
     public function fetchAllProducts(Request $request): JsonResponse
     {
-<<<<<<< HEAD
-=======
         $this->authorize('viewAny', Product::class);
 
->>>>>>> 67f5ce7 (updating the login and other pages UI)
         return response()->json($this->paginateSalesProducts($request));
     }
 
@@ -452,204 +287,8 @@ class SalesController extends Controller
 
     /**
      * Sync offline sales from POS
-<<<<<<< HEAD
-     * Handles multiple sales that were created while offline
      */
     public function syncOfflineSales(Request $request): JsonResponse
-    {
-        $validated = $request->validate([
-            'sales' => 'required|array|min:1',
-            'sales.*.items' => 'required|array|min:1',
-            'sales.*.items.*.product_id' => 'required|string',
-            'sales.*.items.*.product_name' => 'required|string',
-            'sales.*.items.*.quantity' => 'required|integer|min:1',
-            'sales.*.items.*.price' => 'required|numeric',
-            'sales.*.subtotal' => 'required|numeric',
-            'sales.*.discount_amount' => 'numeric|min:0',
-            'sales.*.discount_percentage' => 'numeric|min:0',
-            'sales.*.grand_total' => 'required|numeric',
-            'sales.*.amount_paid' => 'required|numeric',
-            'sales.*.payment_method' => 'required|string',
-            'sales.*.customer_name' => 'string|nullable',
-            'sales.*.created_at' => 'required|date',
-            'sales.*.offline_id' => 'required|string', // Unique ID for duplicate prevention
-        ]);
-
-        DB::beginTransaction();
-
-        try {
-            $results = [
-                'success' => true,
-                'synced_count' => 0,
-                'failed_count' => 0,
-                'errors' => [],
-            ];
-
-            foreach ($validated['sales'] as $saleData) {
-                try {
-                    // Check for duplicate sales using offline_id
-                    $existingSale = Sales::where('offline_sync_id', $saleData['offline_id'])->first();
-                    if ($existingSale) {
-                        Log::info('Duplicate offline sale detected', ['offline_id' => $saleData['offline_id']]);
-                        $results['synced_count']++;
-                        continue;
-                    }
-
-                    // Validate stock availability
-                    $stockErrors = [];
-                    foreach ($saleData['items'] as $item) {
-                        $product = Product::with('inventory')->find($item['product_id']);
-                        if (!$product) {
-                            $stockErrors[] = "Product with ID {$item['product_id']} not found.";
-                            continue;
-                        }
-
-                        if ($product->track_batch && $product->has_expiry) {
-                            $availableBatches = ProductBatch::where('product_id', $product->id)
-                                ->where('quantity', '>', 0)
-                                ->whereDate('expiry_date', '>=', Carbon::today())
-                                ->sum('quantity');
-
-                            if ($availableBatches < $item['quantity']) {
-                                $stockErrors[] = "Insufficient stock for {$product->name}. Available: {$availableBatches}, Requested: {$item['quantity']}";
-                            }
-                        } else {
-                            $inventory = Inventory::where('product_id', $product->id)->first();
-                            $availableStock = (int) ($inventory?->quantity ?? $product->quantity_left ?? 0);
-
-                            if ($availableStock < $item['quantity']) {
-                                $stockErrors[] = "Insufficient stock for {$product->name}. Available: {$availableStock}, Requested: {$item['quantity']}";
-                            }
-                        }
-                    }
-
-                    if (!empty($stockErrors)) {
-                        throw new \Exception(implode('; ', $stockErrors));
-                    }
-
-                    // Create sale
-                    $sale = new Sales();
-                    $sale->transaction_id = 'TNX-' . uniqid(10, false);
-                    $sale->user_id = Auth::id();
-                    $sale->sub_total = $saleData['subtotal'];
-                    $sale->discount_amount = $saleData['discount_amount'] ?? 0;
-                    $sale->discount_percentage = $saleData['discount_percentage'] ?? 0;
-                    $sale->grand_total = $saleData['grand_total'];
-                    $sale->status = 'completed';
-                    $sale->amount_paid = $saleData['amount_paid'];
-                    $sale->payment_method = $saleData['payment_method'];
-                    $sale->customer_name = $saleData['customer_name'] ?? null;
-                    $sale->offline_sync_id = $saleData['offline_id']; // Store offline ID
-                    $sale->synced_at = now();
-                    $sale->save();
-
-                    // Process items and update stock
-                    foreach ($saleData['items'] as $item) {
-                        $product = Product::with('inventory')->findOrFail($item['product_id']);
-                        $remaining = (int) $item['quantity'];
-
-                        if ($product->track_batch && $product->has_expiry) {
-                            $batches = ProductBatch::where('product_id', $product->id)
-                                ->where('quantity', '>', 0)
-                                ->whereDate('expiry_date', '>=', Carbon::today())
-                                ->lockForUpdate()
-                                ->orderBy('expiry_date')
-                                ->get();
-
-                            foreach ($batches as $batch) {
-                                if ($remaining <= 0) break;
-
-                                $deductQty = min($remaining, (int) $batch->quantity);
-                                $batch->quantity -= $deductQty;
-                                $batch->save();
-                                $remaining -= $deductQty;
-
-                                $saleItem = new SaleItem();
-                                $saleItem->product_id = $product->id;
-                                $saleItem->product_batch_id = $batch->id;
-                                $saleItem->category_id = $product->category_id;
-                                $saleItem->sale_id = $sale->id;
-                                $saleItem->product_name = $product->name;
-                                $saleItem->quantity = $deductQty;
-                                $saleItem->price = $product->selling_price;
-                                $saleItem->total_amount = $deductQty * $product->selling_price;
-                                $saleItem->quantity_left = max(0, (int) ($product->quantity_left - $item['quantity']));
-                                $saleItem->quantity_sold = (int) $product->quantity_sold + $item['quantity'];
-                                $saleItem->profit = $product->profit * $deductQty;
-                                $saleItem->expiry_date = $batch->expiry_date;
-                                $saleItem->save();
-                            }
-                        } else {
-                            $inventory = Inventory::where('product_id', $product->id)->lockForUpdate()->first();
-
-                            if ($inventory) {
-                                $inventory->quantity = max(0, (int) $inventory->quantity - $remaining);
-                                if (!$product->has_expiry) {
-                                    $inventory->expiry_date = null;
-                                }
-                                $inventory->save();
-                            }
-
-                            $expiryDate = $inventory?->expiry_date ?? $product->expiry_date;
-
-                            $saleItem = new SaleItem();
-                            $saleItem->product_id = $product->id;
-                            $saleItem->category_id = $product->category_id;
-                            $saleItem->sale_id = $sale->id;
-                            $saleItem->product_name = $product->name;
-                            $saleItem->quantity = $item['quantity'];
-                            $saleItem->price = $product->selling_price;
-                            $saleItem->total_amount = $item['quantity'] * $product->selling_price;
-                            $saleItem->quantity_left = max(0, (int) ($product->quantity_left - $item['quantity']));
-                            $saleItem->quantity_sold = (int) $product->quantity_sold + $item['quantity'];
-                            $saleItem->profit = $product->profit * $item['quantity'];
-                            $saleItem->expiry_date = $expiryDate;
-                            $saleItem->save();
-                        }
-
-                        $product->quantity_left = $this->availableStock($product);
-                        $product->quantity_sold += $item['quantity'];
-                        $product->save();
-                    }
-
-                    $results['synced_count']++;
-                    Log::info('Offline sale synced successfully', ['offline_id' => $saleData['offline_id'], 'sale_id' => $sale->id]);
-                } catch (\Exception $e) {
-                    $results['failed_count']++;
-                    $results['success'] = false;
-                    $results['errors'][] = [
-                        'offline_id' => $saleData['offline_id'] ?? 'unknown',
-                        'message' => $e->getMessage(),
-                    ];
-                    Log::error('Failed to sync offline sale', [
-                        'offline_id' => $saleData['offline_id'] ?? 'unknown',
-                        'error' => $e->getMessage(),
-                    ]);
-                }
-            }
-
-            DB::commit();
-
-            return response()->json($results, $results['success'] ? 200 : 422);
-        } catch (\Exception $e) {
-            DB::rollBack();
-            Log::error('Batch sync failed', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
-
-            return response()->json([
-                'success' => false,
-                'message' => 'Batch sync failed: ' . $e->getMessage(),
-            ], 500);
-        }
-    }
-
-    private function availableStock(Product $product): int
-=======
-     */
-    public function syncOfflineSales(Request $request): JsonResponse
->>>>>>> 67f5ce7 (updating the login and other pages UI)
     {
         $this->authorize('syncOffline', Sales::class);
 

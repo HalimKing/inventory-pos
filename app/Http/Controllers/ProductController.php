@@ -11,7 +11,6 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 
 class ProductController extends Controller
@@ -76,12 +75,7 @@ class ProductController extends Controller
         try {
             DB::beginTransaction();
 
-<<<<<<< HEAD
-            $product = new Product();
-            $storedImagePath = null;
-=======
             $product = new Product;
->>>>>>> 67f5ce7 (updating the login and other pages UI)
 
             $product->name = $validated['name'];
             $product->category_id = $validated['category'];
@@ -102,8 +96,8 @@ class ProductController extends Controller
 
             if ($request->hasFile('image')) {
                 $image = $request->file('image');
-                $storedImagePath = $image->store('images', 'public');
-                $product->product_image = $storedImagePath;
+                $path = $image->store('images', 'public');
+                $product->product_image = $path;
             }
 
             $product->save();
@@ -142,13 +136,8 @@ class ProductController extends Controller
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error($e->getMessage());
-<<<<<<< HEAD
-            if (!empty($storedImagePath)) {
-                Storage::disk('public')->delete($storedImagePath);
-=======
             if ($request->hasFile('image')) {
                 unlink(public_path('images/'.$request->image));
->>>>>>> 67f5ce7 (updating the login and other pages UI)
             }
 
             return redirect()->route('admin.products.index')
@@ -212,7 +201,6 @@ class ProductController extends Controller
         DB::beginTransaction();
 
         try {
-            $storedImagePath = null;
             $previousTotal = (int) $product->total_quantity;
             $requestedTotal = (int) $validated['totalQuantity'];
 
@@ -239,8 +227,8 @@ class ProductController extends Controller
                 $this->deleteProductImageIfExists($product->product_image);
 
                 $image = $request->file('image');
-                $storedImagePath = $image->store('images', 'public');
-                $product->product_image = $storedImagePath;
+                $path = $image->store('images', 'public');
+                $product->product_image = $path;
             }
 
             $product->save();
@@ -282,9 +270,6 @@ class ProductController extends Controller
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error($e->getMessage());
-            if (!empty($storedImagePath)) {
-                Storage::disk('public')->delete($storedImagePath);
-            }
 
             return redirect()->route('admin.products.index')
                 ->with('error', 'Something went wrong!');
@@ -329,15 +314,11 @@ class ProductController extends Controller
             return;
         }
 
-<<<<<<< HEAD
-        Storage::disk('public')->delete($relativePath);
-=======
         $fullPath = public_path('storage/'.ltrim($relativePath, '/'));
 
         if (is_file($fullPath)) {
             unlink($fullPath);
         }
->>>>>>> 67f5ce7 (updating the login and other pages UI)
     }
 
     private function fetchProducts()

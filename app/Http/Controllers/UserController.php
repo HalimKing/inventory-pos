@@ -23,11 +23,7 @@ class UserController extends Controller
         $this->authorize('viewAny', User::class);
 
         $usersData = $this->allUsers();
-<<<<<<< HEAD
-        // dd($usersData);
-=======
 
->>>>>>> 67f5ce7 (updating the login and other pages UI)
         return Inertia::render('users/index', compact('usersData'));
     }
 
@@ -257,15 +253,10 @@ class UserController extends Controller
 
     public function allUsers()
     {
-<<<<<<< HEAD
-        $users = User::with('role')->get();
-        $usersData = $users->map(function($user) {
-=======
         $this->authorize('viewAny', User::class);
 
         $users = User::with('role')->get();
         $usersData = $users->map(function ($user) {
->>>>>>> 67f5ce7 (updating the login and other pages UI)
             return [
                 'id' => $user->id,
                 'name' => $user->name,

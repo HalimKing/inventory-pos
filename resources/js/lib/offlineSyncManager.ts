@@ -153,17 +153,6 @@ class OfflineSyncManager {
    */
   private async syncSale(sale: OfflineSale, attempt = 1): Promise<void> {
     try {
-<<<<<<< HEAD
-      const response = await axios.post('/api/sales/sync', {
-        sales: [this.prepareSaleForSync(sale)],
-      });
-
-      if (response.data.success) {
-        console.log(`[OfflineSyncManager] Sale ${sale.id} synced successfully`);
-        await posDatabase.updateSaleSyncStatus(sale.id, true);
-      } else {
-        throw new Error(response.data.message || 'Sync failed');
-=======
       const response = await axios.post(
         '/api/sales/sync',
         { sales: [this.prepareSaleForSync(sale)] },
@@ -180,7 +169,6 @@ class OfflineSyncManager {
       } else {
         const apiError = response.data.errors?.[0]?.message;
         throw new Error(apiError || response.data.message || 'Sync failed');
->>>>>>> 67f5ce7 (updating the login and other pages UI)
       }
     } catch (error) {
       console.error(`[OfflineSyncManager] Error syncing sale ${sale.id}:`, error);
@@ -201,13 +189,6 @@ class OfflineSyncManager {
   }
 
   /**
-<<<<<<< HEAD
-   * Prepare sale data for API submission
-   */
-  private prepareSaleForSync(sale: OfflineSale) {
-    return {
-      items: sale.items,
-=======
    * Prepare sale data for API submission (snake_case for Laravel validation)
    */
   private prepareSaleForSync(sale: OfflineSale) {
@@ -218,7 +199,6 @@ class OfflineSyncManager {
         quantity: item.quantity,
         price: item.price,
       })),
->>>>>>> 67f5ce7 (updating the login and other pages UI)
       subtotal: sale.subtotal,
       discount_amount: sale.discountAmount,
       discount_percentage: sale.discountPercentage,
@@ -227,11 +207,7 @@ class OfflineSyncManager {
       payment_method: sale.paymentMethod,
       customer_name: sale.customerName,
       created_at: sale.createdAt,
-<<<<<<< HEAD
-      offline_id: sale.id, // Send offline ID for duplicate prevention
-=======
       offline_id: sale.id,
->>>>>>> 67f5ce7 (updating the login and other pages UI)
     };
   }
 

@@ -126,7 +126,7 @@ interface FormData {
     costPrice: number;
     sellingPrice: number;
     totalQuantity: number;
-    image: File | null;
+    image: File | string; // File on upload, string (URL) on initial load/no change
     expiryDate: string;
     reorderLevel?: number;
     hasExpiry: boolean;
@@ -147,18 +147,6 @@ const formatCurrency = (amount: number) => {
         style: 'currency',
         currency: 'GHS',
     }).format(amount);
-};
-
-const resolveImageUrl = (imagePath?: string | null) => {
-    if (!imagePath) {
-        return '';
-    }
-
-    if (/^https?:\/\//i.test(imagePath) || imagePath.startsWith('/')) {
-        return imagePath;
-    }
-
-    return `/storage/${imagePath.replace(/^\/+/, '')}`;
 };
 
 // **UPDATED COLUMNS TO USE NEW HANDLERS**
@@ -196,16 +184,11 @@ export const createColumns = (
         header: 'Image',
         cell: ({ row }) => {
             const imageUrl = row.getValue('image') as string;
-            const resolvedImageUrl = resolveImageUrl(imageUrl);
             return (
                 <div className="h-10 w-10 overflow-hidden rounded-md border">
-                    {resolvedImageUrl ? (
+                    {imageUrl ? (
                         <img
-<<<<<<< HEAD
-                            src={resolvedImageUrl}
-=======
                             src={resolveStorageUrl(imageUrl) ?? undefined}
->>>>>>> 67f5ce7 (updating the login and other pages UI)
                             alt="Product"
                             className="h-full w-full object-cover"
                         />
@@ -689,7 +672,7 @@ const ProducIndexPage = ({ productData }: { productData: Product[] }) => {
         sellingPrice: 0,
         costPrice: 0,
         totalQuantity: 0,
-        image: null,
+        image: '',
         expiryDate: '',
         reorderLevel: 0,
         hasExpiry: false,
@@ -713,7 +696,7 @@ const ProducIndexPage = ({ productData }: { productData: Product[] }) => {
         sellingPrice: 0,
         costPrice: 0,
         totalQuantity: 0,
-        image: null,
+        image: '',
         expiryDate: '',
         reorderLevel: 0,
         hasExpiry: false,
@@ -740,7 +723,7 @@ const ProducIndexPage = ({ productData }: { productData: Product[] }) => {
             sellingPrice: product.sellingPrice,
             costPrice: product.initialAmount, // initialAmount is Cost Price
             totalQuantity: product.totalQuantity,
-            image: null,
+            image: product.image ?? '', // Use existing image URL
             expiryDate: product.expiryDate
                 ? new Date(product.expiryDate).toISOString().split('T')[0]
                 : '',
@@ -1260,9 +1243,9 @@ const ProducIndexPage = ({ productData }: { productData: Product[] }) => {
 
         // Set data in the correct form
         if (isEdit) {
-            setEditData('image', file ?? null);
+            setEditData('image', file as any);
         } else {
-            setData('image', file ?? null);
+            setData('image', file as any);
         }
     };
 
@@ -1287,6 +1270,7 @@ const ProducIndexPage = ({ productData }: { productData: Product[] }) => {
         event?.preventDefault();
         if (!selectedProduct) return;
 
+        // Since we are sending a PUT request with file, we must use `post` with `_method: 'PUT'` and `forceFormData: true`
         put(`/admin/products/${selectedProduct.id}`, {
             forceFormData: true, // Crucial for file uploads and PUT/PATCH with Inertia
             onSuccess: () => {
@@ -1911,7 +1895,7 @@ const ProducIndexPage = ({ productData }: { productData: Product[] }) => {
                                                                             '';
                                                                     setData(
                                                                         'image',
-                                                                        null,
+                                                                        '',
                                                                     ); // Clear image data on form
                                                                 }}
                                                             >
@@ -1965,15 +1949,11 @@ const ProducIndexPage = ({ productData }: { productData: Product[] }) => {
                             <div className="absolute -bottom-16 left-1/2 z-20 -translate-x-1/2">
                                 <div className="h-32 w-32 overflow-hidden rounded-2xl bg-white shadow-xl ring-4 ring-white">
                                     <img
-<<<<<<< HEAD
-                                        src={resolveImageUrl(selectedProduct.image)}
-=======
                                         src={
                                             resolveStorageUrl(
                                                 selectedProduct.image,
                                             ) ?? undefined
                                         }
->>>>>>> 67f5ce7 (updating the login and other pages UI)
                                         alt={selectedProduct.name}
                                         className="h-full w-full object-cover"
                                     />
@@ -2876,8 +2856,7 @@ const ProducIndexPage = ({ productData }: { productData: Product[] }) => {
                                     />
                                     <p className="text-xs text-gray-500">
                                         Supported: JPG, JPEG, PNG (max 5MB).
-                                        Optional. Leave blank to keep the
-                                        current image.
+                                        Leave blank to keep current image.
                                     </p>
                                     {editErrors.image && (
                                         <p className="flex items-center gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-600">
@@ -2894,8 +2873,8 @@ const ProducIndexPage = ({ productData }: { productData: Product[] }) => {
                                             <div className="flex items-start gap-4">
                                                 <div className="h-32 w-32 overflow-hidden rounded-lg border-2 border-gray-300 shadow-sm">
                                                     <img
-                                                        src={`/storage/${imagePreview}`}
-                                                        alt={imagePreview}
+                                                        src={imagePreview}
+                                                        alt="Product preview"
                                                         className="h-full w-full object-cover"
                                                     />
                                                 </div>
@@ -2915,7 +2894,7 @@ const ProducIndexPage = ({ productData }: { productData: Product[] }) => {
                                                                 '';
                                                         setEditData(
                                                             'image',
-                                                            null,
+                                                            '',
                                                         );
                                                     }}
                                                 >

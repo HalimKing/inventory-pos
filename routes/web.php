@@ -44,10 +44,7 @@ Route::get('dashboard', [DashboardController::class, 'index'])->middleware(['aut
 
 Route::middleware(['auth', 'role:supper admin,admin,cashier'])->group(function () {
     Route::get('api/products/barcode/{barcode}', [SalesController::class, 'fetchProductByBarcode']);
-<<<<<<< HEAD
     Route::get('api/categories/fetch', [CategoryController::class, 'fetchCategories']);
-=======
->>>>>>> 67f5ce7 (updating the login and other pages UI)
     Route::post('api/sales/sync', [SalesController::class, 'syncOfflineSales']);
 });
 

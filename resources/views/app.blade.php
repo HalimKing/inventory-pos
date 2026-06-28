@@ -1,22 +1,9 @@
 <!DOCTYPE html>
-<<<<<<< HEAD
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" @class(['dark'=> ($appearance ?? 'system') == 'dark'])>
-=======
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}" @class(['dark'=> ($appearance ?? 'light') == 'dark'])>
->>>>>>> 67f5ce7 (updating the login and other pages UI)
 
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-<<<<<<< HEAD
-
-    {{-- Inline script to detect system dark mode preference and apply it immediately --}}
-    <script>
-        (function() {
-            const appearance = '{{ $appearance ?? "system" }}';
-
-            if (appearance === 'system') {
-=======
     <meta name="csrf-token" content="{{ csrf_token() }}">
 
     {{-- Inline script to apply theme before React loads --}}
@@ -27,7 +14,6 @@
             if (appearance === 'dark') {
                 document.documentElement.classList.add('dark');
             } else if (appearance === 'system') {
->>>>>>> 67f5ce7 (updating the login and other pages UI)
                 const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
 
                 if (prefersDark) {
