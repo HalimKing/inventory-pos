@@ -40,6 +40,16 @@ class ProductPolicy
         return $this->canManageCatalog($user);
     }
 
+    public function addStock(User $user, Product $product): bool
+    {
+        return $this->canManageCatalog($user);
+    }
+
+    public function viewStockHistory(User $user, Product $product): bool
+    {
+        return $this->canAccessCatalog($user);
+    }
+
     public function import(User $user): bool
     {
         return $this->isAdmin($user);

@@ -14,7 +14,7 @@ export function SidebarBrand() {
     const companyName = company?.company_name ?? name ?? 'Mall POS';
     const logoUrl =
         resolveStorageUrl(company?.logo) ?? '/favicon.png';
-    const dashboardHref = getDashboardHref(Number(auth.user.role_id ?? 0));
+    const dashboardHref = getDashboardHref(auth.user);
 
     return (
         <Link

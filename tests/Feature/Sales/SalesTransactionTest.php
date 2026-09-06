@@ -1,12 +1,16 @@
 <?php
 
+use App\Http\Controllers\SalesDetailsController;
 use App\Models\Category;
 use App\Models\Inventory;
 use App\Models\Product;
 use App\Models\Sales;
 use App\Models\Supplier;
 use App\Models\User;
+use App\Services\SalesService;
 use Database\Seeders\RoleSeeder;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
 
 function createPosCatalogProduct(int $stock = 10): Product
 {
@@ -188,4 +192,97 @@ test('offline sync fails when stock is insufficient', function () {
 
     expect(Sales::query()->count())->toBe(0);
     expect(Inventory::query()->where('product_id', $product->id)->value('quantity'))->toBe(1);
+});
+
+test('a partial refund restores stock and updates the original sale status', function () {
+    $user = User::factory()->withoutTwoFactor()->create(['role_id' => 3]);
+    $product = createPosCatalogProduct(stock: 10);
+
+    $sale = app(SalesService::class)->processSale([
+        'items' => [[
+            'product_id' => (string) $product->id,
+            'quantity' => 4,
+            'price' => 10,
+            'subtotal' => 40,
+        ]],
+        'subtotal' => 40,
+        'discount_amount' => 0,
+        'discount_percentage' => 0,
+        'grand_total' => 40,
+        'amount_paid' => 40,
+        'change_amount' => 0,
+        'payment_method' => 'cash',
+        'customer_name' => 'Customer',
+    ], $user->id);
+
+    $saleItem = $sale->saleItems()->first();
+
+    $response = $this->actingAs($user)->postJson('/cashier/api/transactions/'.$sale->id.'/refund', [
+        'reason' => 'Customer changed mind',
+        'items' => [[
+            'sale_item_id' => $saleItem->id,
+            'quantity' => 2,
+        ]],
+    ]);
+
+    $response->assertOk()->assertJson(['success' => true]);
+
+    $sale->refresh();
+    $saleItem->refresh();
+
+    $refundSale = Sales::query()->where('refund_of_sale_id', $sale->id)->first();
+
+    expect($sale->status)->toBe('partially_refunded');
+    expect($saleItem->refunded_quantity)->toBe(2);
+    expect(Inventory::query()->where('product_id', $product->id)->value('quantity'))->toBe(8);
+    expect($refundSale)->not->toBeNull();
+    expect($refundSale?->grand_total)->toBe(-20);
+    expect(Sales::query()->where('refund_of_sale_id', $sale->id)->count())->toBe(1);
+});
+
+test('admin transaction reports exclude refund records and use net revenue', function () {
+    $admin = User::factory()->withoutTwoFactor()->create([
+        'role_id' => 2,
+        'email_verified_at' => now(),
+    ]);
+    $product = createPosCatalogProduct(stock: 10);
+
+    $sale = app(SalesService::class)->processSale([
+        'items' => [[
+            'product_id' => (string) $product->id,
+            'quantity' => 3,
+            'price' => 10,
+            'subtotal' => 30,
+        ]],
+        'subtotal' => 30,
+        'discount_amount' => 0,
+        'discount_percentage' => 0,
+        'grand_total' => 30,
+        'amount_paid' => 30,
+        'change_amount' => 0,
+        'payment_method' => 'cash',
+        'customer_name' => 'Customer',
+    ], $admin->id);
+
+    $saleItem = $sale->saleItems()->first();
+
+    $refundSale = app(SalesService::class)->refundSale($sale, [
+        'reason' => 'Customer changed mind',
+        'items' => [[
+            'sale_item_id' => $saleItem->id,
+            'quantity' => 1,
+        ]],
+    ], $admin);
+
+    expect($refundSale->grand_total)->toBe(-10.0);
+
+    Gate::before(fn ($user, $ability) => true);
+    $this->actingAs($admin);
+
+    $response = app(SalesDetailsController::class)->transactions();
+    $transactions = $response->getData(true);
+
+    expect($response->status())->toBe(200);
+    expect($transactions)->toHaveCount(2);
+    expect(collect($transactions)->sum('grandTotal'))->toBe(20);
 });

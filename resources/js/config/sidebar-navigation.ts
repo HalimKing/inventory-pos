@@ -1,4 +1,5 @@
-import { type NavGroup } from '@/types';
+import { resolveRoleName } from '@/lib/sidebar-utils';
+import { type NavGroup, type User } from '@/types';
 import {
     BarChart3,
     FolderTree,
@@ -135,12 +136,14 @@ const adminNavGroups: NavGroup[] = [
     },
 ];
 
-export function getSidebarNavGroups(roleId: number): NavGroup[] {
-    if (roleId === 3) {
+export function getSidebarNavGroups(user: User): NavGroup[] {
+    const role = resolveRoleName(user);
+
+    if (role === 'cashier') {
         return cashierNavGroups;
     }
 
-    if (roleId === 4) {
+    if (role === 'inventory') {
         return inventoryNavGroups;
     }
 

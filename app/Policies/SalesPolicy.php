@@ -34,6 +34,11 @@ class SalesPolicy
         return $this->create($user);
     }
 
+    public function refund(User $user): bool
+    {
+        return $this->isAdmin($user) || $this->isCashier($user);
+    }
+
     public function viewReports(User $user): bool
     {
         return $this->isAdmin($user);

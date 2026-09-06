@@ -1,18 +1,35 @@
 import { resolveUrl } from '@/lib/utils';
 import { type User } from '@/types';
 
-const ROLE_LABELS: Record<number, string> = {
-    1: 'Super Administrator',
-    2: 'Administrator',
-    3: 'Cashier',
-    4: 'Inventory Manager',
+const ROLE_LABELS: Record<string, string> = {
+    'supper admin': 'Super Administrator',
+    admin: 'Administrator',
+    cashier: 'Cashier',
+    inventory: 'Inventory Manager',
 };
 
-export function getRoleLabel(user: User): string {
-    const roleId = Number(user.role_id);
+const ROLE_ID_NAMES: Record<number, string> = {
+    1: 'supper admin',
+    2: 'admin',
+    3: 'cashier',
+    4: 'inventory',
+};
 
-    if (ROLE_LABELS[roleId]) {
-        return ROLE_LABELS[roleId];
+export function resolveRoleName(user: User | null | undefined): string {
+    const named = String(user?.role ?? '').toLowerCase().trim();
+
+    if (named && ROLE_LABELS[named]) {
+        return named;
+    }
+
+    return ROLE_ID_NAMES[Number(user?.role_id ?? 0)] ?? '';
+}
+
+export function getRoleLabel(user: User): string {
+    const roleName = resolveRoleName(user);
+
+    if (ROLE_LABELS[roleName]) {
+        return ROLE_LABELS[roleName];
     }
 
     if (user.role) {
@@ -31,20 +48,24 @@ export function isNavItemActive(
     return currentUrl === target || currentUrl.startsWith(`${target}/`);
 }
 
-export function getSettingsHref(roleId: number): string {
-    if (roleId === 1 || roleId === 2) {
+export function getSettingsHref(user: User): string {
+    const role = resolveRoleName(user);
+
+    if (role === 'supper admin' || role === 'admin') {
         return '/admin/settings/index';
     }
 
     return '/settings/profile';
 }
 
-export function getDashboardHref(roleId: number): string {
-    if (roleId === 3) {
+export function getDashboardHref(user: User): string {
+    const role = resolveRoleName(user);
+
+    if (role === 'cashier') {
         return '/cashier/dashboard';
     }
 
-    if (roleId === 4) {
+    if (role === 'inventory') {
         return '/admin/products';
     }
 

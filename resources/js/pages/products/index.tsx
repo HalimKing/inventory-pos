@@ -22,6 +22,8 @@ import {
     Filter,
     MoreHorizontal,
     Plus,
+    PackagePlus,
+    History,
     ShoppingCart,
     TrendingUp,
     Upload,
@@ -153,7 +155,9 @@ const formatCurrency = (amount: number) => {
 export const createColumns = (
     handleView: (product: Product) => void,
     handleEdit: (product: Product) => void,
-    handleDelete: (product: Product) => void, // Added delete handler
+    handleDelete: (product: Product) => void,
+    handleAddStock: (product: Product) => void,
+    handleStockHistory: (product: Product) => void,
 ): ColumnDef<Product>[] => [
     {
         id: 'select',
@@ -549,6 +553,16 @@ export const createColumns = (
                             View
                         </DropdownMenuItem>
                         <DropdownMenuItem
+                            onClick={() => handleAddStock(product)}
+                        >
+                            Add Stock
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                            onClick={() => handleStockHistory(product)}
+                        >
+                            Stock History
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
                             onClick={() => handleEdit(product)} // **ADDED EDIT HANDLER**
                         >
                             Edit
@@ -592,6 +606,33 @@ const ProducIndexPage = ({ productData }: { productData: Product[] }) => {
         quantity: 0,
         expiryDate: '',
     });
+    const [isAddStockOpen, setIsAddStockOpen] = React.useState(false);
+    const [isStockHistoryOpen, setIsStockHistoryOpen] = React.useState(false);
+    const [isAddingStock, setIsAddingStock] = React.useState(false);
+    const [stockHistoryLoading, setStockHistoryLoading] = React.useState(false);
+    const [stockHistory, setStockHistory] = React.useState<
+        Array<{
+            id: number;
+            type: string;
+            typeLabel: string;
+            quantityDelta: number;
+            quantityBefore: number;
+            quantityAfter: number;
+            notes: string | null;
+            batchNumber?: string | null;
+            userName: string;
+            createdAt: string;
+        }>
+    >([]);
+    const [addStockForm, setAddStockForm] = React.useState({
+        quantity: 1,
+        notes: '',
+        expiryDate: '',
+        batchNumber: '',
+    });
+    const [addStockErrors, setAddStockErrors] = React.useState<
+        Record<string, string>
+    >({});
 
     // **NEW STATES FOR EXCEL UPLOAD**
     const [isUploadDialogOpen, setIsUploadDialogOpen] = React.useState(false);
@@ -743,6 +784,85 @@ const ProducIndexPage = ({ productData }: { productData: Product[] }) => {
         fetchAllSuppliers();
 
         setIsEditProductOpen(true);
+    };
+
+    const handleOpenAddStock = (product: Product) => {
+        setSelectedProduct(product);
+        setAddStockForm({
+            quantity: 1,
+            notes: '',
+            expiryDate: '',
+            batchNumber: '',
+        });
+        setAddStockErrors({});
+        setIsAddStockOpen(true);
+    };
+
+    const handleOpenStockHistory = async (product: Product) => {
+        setSelectedProduct(product);
+        setIsStockHistoryOpen(true);
+        setStockHistoryLoading(true);
+        try {
+            const { data } = await axios.get(
+                `/admin/products/${product.id}/stock-movements`,
+            );
+            setStockHistory(data.movements ?? []);
+        } catch (error) {
+            console.error(error);
+            toast.error('Failed to load stock history');
+            setStockHistory([]);
+        } finally {
+            setStockHistoryLoading(false);
+        }
+    };
+
+    const handleSubmitAddStock = async (event?: React.SyntheticEvent) => {
+        event?.preventDefault();
+        if (!selectedProduct) return;
+
+        setIsAddingStock(true);
+        setAddStockErrors({});
+
+        try {
+            const payload: Record<string, unknown> = {
+                quantity: Number(addStockForm.quantity),
+                notes: addStockForm.notes || null,
+            };
+
+            if (selectedProduct.trackBatch || selectedProduct.hasExpiry) {
+                payload.expiryDate = addStockForm.expiryDate || null;
+            }
+
+            if (selectedProduct.trackBatch && addStockForm.batchNumber) {
+                payload.batchNumber = addStockForm.batchNumber;
+            }
+
+            const { data } = await axios.post(
+                `/admin/products/${selectedProduct.id}/stock`,
+                payload,
+            );
+
+            toast.success(data.message ?? 'Stock added successfully');
+            setIsAddStockOpen(false);
+            await fetchAllProducts();
+        } catch (error: any) {
+            const errors = error?.response?.data?.errors;
+            if (errors) {
+                const mapped: Record<string, string> = {};
+                Object.entries(errors).forEach(([key, value]) => {
+                    mapped[key] = Array.isArray(value)
+                        ? String(value[0])
+                        : String(value);
+                });
+                setAddStockErrors(mapped);
+            } else {
+                toast.error(
+                    error?.response?.data?.message ?? 'Failed to add stock',
+                );
+            }
+        } finally {
+            setIsAddingStock(false);
+        }
     };
 
     // **NEW: Handler to delete product with SweetAlert2 confirmation**
@@ -1157,6 +1277,8 @@ const ProducIndexPage = ({ productData }: { productData: Product[] }) => {
                 handleViewProduct,
                 handleEditProduct,
                 handleDeleteProduct,
+                handleOpenAddStock,
+                handleOpenStockHistory,
             ),
         [products],
     );
@@ -2280,23 +2402,274 @@ const ProducIndexPage = ({ productData }: { productData: Product[] }) => {
                                     </div>
                                 </div>
                             ) : (
-                                <div className="rounded-lg border border-gray-200 bg-white p-3 text-sm text-gray-600">
-                                    Non-batch stock uses simple quantity
-                                    tracking from inventory.
+                                <div className="space-y-3 rounded-lg border border-gray-200 bg-white p-3 text-sm text-gray-600">
+                                    <p>
+                                        Non-batch stock uses simple quantity
+                                        tracking. Use Add Stock when new units
+                                        arrive so quantity increases on this
+                                        product instead of creating a duplicate.
+                                    </p>
+                                    <Button
+                                        size="sm"
+                                        onClick={() => {
+                                            if (!selectedProduct) return;
+                                            setIsViewProductOpen(false);
+                                            handleOpenAddStock(selectedProduct);
+                                        }}
+                                    >
+                                        <PackagePlus className="mr-1 h-3.5 w-3.5" />
+                                        Add Stock
+                                    </Button>
                                 </div>
                             )}
                         </div>
                     </div>
 
                     {/* Footer */}
-                    <DialogFooter className="border-t bg-gray-50 px-6 py-4">
+                    <DialogFooter className="flex flex-col gap-2 border-t bg-gray-50 px-6 py-4 sm:flex-row sm:justify-end">
+                        <Button
+                            variant="outline"
+                            onClick={() => {
+                                if (!selectedProduct) return;
+                                setIsViewProductOpen(false);
+                                handleOpenStockHistory(selectedProduct);
+                            }}
+                        >
+                            <History className="mr-1 h-4 w-4" />
+                            Stock History
+                        </Button>
+                        <Button
+                            onClick={() => {
+                                if (!selectedProduct) return;
+                                setIsViewProductOpen(false);
+                                handleOpenAddStock(selectedProduct);
+                            }}
+                        >
+                            <PackagePlus className="mr-1 h-4 w-4" />
+                            Add Stock
+                        </Button>
                         <Button
                             onClick={() => setIsViewProductOpen(false)}
-                            className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 px-8 font-semibold text-white shadow-md transition-all hover:from-blue-700 hover:to-indigo-700 hover:shadow-lg sm:w-auto"
+                            className="bg-gradient-to-r from-blue-600 to-indigo-600 font-semibold text-white shadow-md hover:from-blue-700 hover:to-indigo-700"
                         >
                             Close
                         </Button>
                     </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={isAddStockOpen} onOpenChange={setIsAddStockOpen}>
+                <DialogContent className="sm:max-w-[480px]">
+                    <DialogHeader>
+                        <DialogTitle>Add Stock</DialogTitle>
+                        <DialogDescription>
+                            Increase available quantity for{' '}
+                            <span className="font-semibold text-gray-800">
+                                {selectedProduct?.name}
+                            </span>
+                            . Current quantity:{' '}
+                            <span className="font-semibold">
+                                {selectedProduct?.quantityLeft ?? 0}
+                            </span>
+                        </DialogDescription>
+                    </DialogHeader>
+                    <form onSubmit={handleSubmitAddStock} className="space-y-4">
+                        <div className="space-y-2">
+                            <Label htmlFor="addStockQuantity">
+                                Quantity to add
+                            </Label>
+                            <Input
+                                id="addStockQuantity"
+                                type="number"
+                                min={1}
+                                value={addStockForm.quantity}
+                                onChange={(e) =>
+                                    setAddStockForm((prev) => ({
+                                        ...prev,
+                                        quantity: Number(e.target.value),
+                                    }))
+                                }
+                                required
+                            />
+                            {addStockErrors.quantity && (
+                                <p className="text-xs text-red-600">
+                                    {addStockErrors.quantity}
+                                </p>
+                            )}
+                        </div>
+
+                        {(selectedProduct?.trackBatch ||
+                            selectedProduct?.hasExpiry) && (
+                            <div className="space-y-2">
+                                <Label htmlFor="addStockExpiry">
+                                    Expiry date
+                                    {selectedProduct?.trackBatch
+                                        ? ' (required for batch stock)'
+                                        : ''}
+                                </Label>
+                                <Input
+                                    id="addStockExpiry"
+                                    type="date"
+                                    value={addStockForm.expiryDate}
+                                    onChange={(e) =>
+                                        setAddStockForm((prev) => ({
+                                            ...prev,
+                                            expiryDate: e.target.value,
+                                        }))
+                                    }
+                                    required={Boolean(
+                                        selectedProduct?.trackBatch,
+                                    )}
+                                />
+                                {addStockErrors.expiryDate && (
+                                    <p className="text-xs text-red-600">
+                                        {addStockErrors.expiryDate}
+                                    </p>
+                                )}
+                            </div>
+                        )}
+
+                        {selectedProduct?.trackBatch && (
+                            <div className="space-y-2">
+                                <Label htmlFor="addStockBatchNumber">
+                                    Batch number (optional)
+                                </Label>
+                                <Input
+                                    id="addStockBatchNumber"
+                                    value={addStockForm.batchNumber}
+                                    onChange={(e) =>
+                                        setAddStockForm((prev) => ({
+                                            ...prev,
+                                            batchNumber: e.target.value,
+                                        }))
+                                    }
+                                    placeholder="Auto-generated if left blank"
+                                />
+                                {addStockErrors.batchNumber && (
+                                    <p className="text-xs text-red-600">
+                                        {addStockErrors.batchNumber}
+                                    </p>
+                                )}
+                            </div>
+                        )}
+
+                        <div className="space-y-2">
+                            <Label htmlFor="addStockNotes">Notes</Label>
+                            <Input
+                                id="addStockNotes"
+                                value={addStockForm.notes}
+                                onChange={(e) =>
+                                    setAddStockForm((prev) => ({
+                                        ...prev,
+                                        notes: e.target.value,
+                                    }))
+                                }
+                                placeholder="e.g. Supplier delivery #4521"
+                            />
+                        </div>
+
+                        <DialogFooter>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() => setIsAddStockOpen(false)}
+                            >
+                                Cancel
+                            </Button>
+                            <Button type="submit" disabled={isAddingStock}>
+                                {isAddingStock ? 'Adding...' : 'Add Stock'}
+                            </Button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog
+                open={isStockHistoryOpen}
+                onOpenChange={setIsStockHistoryOpen}
+            >
+                <DialogContent className="sm:max-w-[640px]">
+                    <DialogHeader>
+                        <DialogTitle>Stock History</DialogTitle>
+                        <DialogDescription>
+                            Movement log for{' '}
+                            <span className="font-semibold text-gray-800">
+                                {selectedProduct?.name}
+                            </span>
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="max-h-[420px] overflow-auto rounded-lg border">
+                        {stockHistoryLoading ? (
+                            <div className="p-6 text-center text-sm text-muted-foreground">
+                                Loading history...
+                            </div>
+                        ) : stockHistory.length === 0 ? (
+                            <div className="p-6 text-center text-sm text-muted-foreground">
+                                No stock movements recorded yet.
+                            </div>
+                        ) : (
+                            <table className="w-full text-sm">
+                                <thead className="bg-muted/50 text-left text-xs uppercase">
+                                    <tr>
+                                        <th className="px-3 py-2">Date</th>
+                                        <th className="px-3 py-2">Type</th>
+                                        <th className="px-3 py-2">Change</th>
+                                        <th className="px-3 py-2">Balance</th>
+                                        <th className="px-3 py-2">User</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {stockHistory.map((movement) => (
+                                        <tr
+                                            key={movement.id}
+                                            className="border-t"
+                                        >
+                                            <td className="px-3 py-2 whitespace-nowrap">
+                                                {new Date(
+                                                    movement.createdAt,
+                                                ).toLocaleString()}
+                                            </td>
+                                            <td className="px-3 py-2">
+                                                <div className="font-medium">
+                                                    {movement.typeLabel}
+                                                </div>
+                                                {movement.notes && (
+                                                    <div className="text-xs text-muted-foreground">
+                                                        {movement.notes}
+                                                    </div>
+                                                )}
+                                                {movement.batchNumber && (
+                                                    <div className="text-xs text-muted-foreground">
+                                                        Batch:{' '}
+                                                        {movement.batchNumber}
+                                                    </div>
+                                                )}
+                                            </td>
+                                            <td
+                                                className={`px-3 py-2 font-semibold ${
+                                                    movement.quantityDelta >= 0
+                                                        ? 'text-emerald-600'
+                                                        : 'text-red-600'
+                                                }`}
+                                            >
+                                                {movement.quantityDelta > 0
+                                                    ? '+'
+                                                    : ''}
+                                                {movement.quantityDelta}
+                                            </td>
+                                            <td className="px-3 py-2">
+                                                {movement.quantityBefore} →{' '}
+                                                {movement.quantityAfter}
+                                            </td>
+                                            <td className="px-3 py-2">
+                                                {movement.userName}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        )}
+                    </div>
                 </DialogContent>
             </Dialog>
 
@@ -2653,36 +3026,28 @@ const ProducIndexPage = ({ productData }: { productData: Product[] }) => {
                                 </h3>
 
                                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                                    {/* Total Quantity */}
+                                    {/* Available Quantity (read-only) */}
                                     <div className="space-y-2">
-                                        <Label
-                                            htmlFor="editTotalQuantity"
-                                            className="text-sm font-medium text-gray-700"
-                                        >
-                                            Total Quantity
+                                        <Label className="text-sm font-medium text-gray-700">
+                                            Available Quantity
                                         </Label>
                                         <Input
                                             id="editTotalQuantity"
                                             name="totalQuantity"
                                             type="number"
-                                            placeholder="100"
-                                            min="0"
                                             value={editData.totalQuantity}
-                                            onChange={(e) =>
-                                                setEditData(
-                                                    'totalQuantity',
-                                                    parseInt(e.target.value),
-                                                )
-                                            }
+                                            readOnly
+                                            disabled
+                                            className="bg-muted"
                                         />
-                                        <p className="text-xs text-gray-500 italic">
-                                            Managed via stock transactions
+                                        <p className="text-xs text-gray-500">
+                                            Use{' '}
+                                            <span className="font-medium">
+                                                Add Stock
+                                            </span>{' '}
+                                            to increase quantity. Editing the
+                                            product will not change stock.
                                         </p>
-                                        {editErrors.totalQuantity && (
-                                            <p className="text-xs font-medium text-red-600">
-                                                {editErrors.totalQuantity}
-                                            </p>
-                                        )}
                                     </div>
 
                                     {/* Reorder Level */}

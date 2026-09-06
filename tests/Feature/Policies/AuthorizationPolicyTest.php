@@ -37,6 +37,38 @@ test('inventory staff can access product listing', function () {
         ->assertOk();
 });
 
+test('inventory staff can access categories and suppliers', function () {
+    $user = User::factory()->withoutTwoFactor()->create(['role_id' => 4]);
+
+    $this->actingAs($user)
+        ->get('/admin/categories')
+        ->assertOk();
+
+    $this->actingAs($user)
+        ->get('/admin/suppliers')
+        ->assertOk();
+});
+
+test('inventory staff cannot access the admin dashboard', function () {
+    $user = User::factory()->withoutTwoFactor()->create(['role_id' => 4]);
+
+    $this->actingAs($user)
+        ->get('/admin/dashboard')
+        ->assertForbidden();
+});
+
+test('admin can access the admin dashboard and product listing', function () {
+    $admin = User::factory()->withoutTwoFactor()->create(['role_id' => 2]);
+
+    $this->actingAs($admin)
+        ->get('/admin/dashboard')
+        ->assertOk();
+
+    $this->actingAs($admin)
+        ->get('/admin/products')
+        ->assertOk();
+});
+
 test('admin cannot assign super admin role when creating users', function () {
     $admin = User::factory()->withoutTwoFactor()->create(['role_id' => 2]);
 

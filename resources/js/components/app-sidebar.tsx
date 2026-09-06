@@ -15,8 +15,7 @@ import { usePage } from '@inertiajs/react';
 
 export function AppSidebar() {
     const { auth } = usePage<SharedData>().props;
-    const roleId = Number(auth.user.role_id ?? 0);
-    const navGroups = getSidebarNavGroups(roleId);
+    const navGroups = getSidebarNavGroups(auth.user);
 
     return (
         <Sidebar

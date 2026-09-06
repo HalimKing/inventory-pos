@@ -827,6 +827,17 @@ const POSCashierInterface: React.FC<SalesProps> = ({
               .receipt-container {
                 margin: 0 auto;
                 transform: translateY(0);
+                box-shadow: none !important;
+              }
+              .button-container,
+              .print-btn,
+              .close-btn {
+                display: none !important;
+                visibility: hidden !important;
+                height: 0 !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                overflow: hidden !important;
               }
             }
             
@@ -1031,13 +1042,13 @@ const POSCashierInterface: React.FC<SalesProps> = ({
               ${companySettings.return_policy?.length !== 0 ? `<p style="margin: 5px 0;">Return Policy: ${companySettings.return_policy}</p>` : ''}
               ${companySettings.thank_you_message?.length !== 0 ? `<p style="margin: 5px 0;">${companySettings.thank_you_message}</p>` : ''}
             </div>
-
-            <!-- Print Buttons (Hidden when printing) -->
-            <div class="button-container">
-              <button class="print-btn" onclick="window.print()">Print Receipt</button>
-              <button class="close-btn" onclick="window.close()">Close</button>
-            </div>
           </div>
+
+            <!-- Print Buttons (screen only — hidden when printing) -->
+            <div class="button-container no-print">
+              <button type="button" class="print-btn" onclick="window.print()">Print Receipt</button>
+              <button type="button" class="close-btn" onclick="window.close()">Close</button>
+            </div>
           
           <script>
             setTimeout(() => {

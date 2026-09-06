@@ -62,6 +62,7 @@ Route::middleware(['auth', 'role:cashier'])->prefix('cashier')->name('cashier.')
     Route::get('transactions', [CashierTransactionController::class, 'index'])->name('transactions.index');
     Route::get('api/transactions', [CashierTransactionController::class, 'list']);
     Route::get('api/transactions/{sale}', [CashierTransactionController::class, 'show']);
+    Route::post('api/transactions/{sale}/refund', [SalesController::class, 'refundTransaction']);
     Route::post('api/transactions/{sale}/reprint-log', [CashierTransactionController::class, 'logReprint']);
     Route::post('api/transactions/{sale}/resend-receipt', [CashierTransactionController::class, 'resendReceipt']);
 
@@ -95,6 +96,7 @@ Route::middleware(['auth', 'verified'])->prefix('admin')->name('admin.')->group(
             Route::get('transactions', [SalesDetailsController::class, 'transactions']);
             Route::get('transactions/{id}/sale-items', [SalesDetailsController::class, 'saleItems']);
             Route::get('transactions/{id}/details', [SalesDetailsController::class, 'transactionDetails']);
+            Route::post('transactions/{sale}/refund', [SalesController::class, 'refundTransaction']);
         });
 
         Route::resource('users', UserController::class);
@@ -133,6 +135,8 @@ Route::middleware(['auth', 'verified'])->prefix('admin')->name('admin.')->group(
 
         Route::prefix('products')->group(function () {
             Route::get('data/fetch/all-products', [ProductController::class, 'fetchProductsData']);
+            Route::post('{product}/stock', [ProductController::class, 'addStock'])->name('products.stock.add');
+            Route::get('{product}/stock-movements', [ProductController::class, 'stockMovements'])->name('products.stock.movements');
             Route::post('{product}/batches', [ProductController::class, 'storeBatch']);
             Route::put('{product}/batches/{batch}', [ProductController::class, 'updateBatch']);
             Route::delete('{product}/batches/{batch}', [ProductController::class, 'destroyBatch']);

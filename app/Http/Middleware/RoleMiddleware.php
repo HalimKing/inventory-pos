@@ -10,48 +10,47 @@ class RoleMiddleware
 {
     /**
      * Handle an incoming request.
-     * Accepts role names as middleware parameters, e.g. ->middleware('role:admin|cashier')
+     * Accepts role names as middleware parameters, e.g. role:admin|cashier or role:admin,cashier
      *
      * @param  \Closure(\Illuminate\Http\Request): (\Symfony\Component\HttpFoundation\Response)  $next
      */
-    public function handle(Request $request, Closure $next, string $roles = null): Response
+    public function handle(Request $request, Closure $next, string ...$roles): Response
     {
         if (! auth()->check()) {
             abort(403);
         }
 
-        // If no roles provided, allow any authenticated user
-        if (empty($roles)) {
+        if ($roles === []) {
             return $next($request);
         }
 
-        $allowed = array_filter(array_map('trim', preg_split('/[|,]/', strtolower($roles))));
+        $allowed = [];
+        foreach ($roles as $role) {
+            foreach (preg_split('/[|,]/', strtolower($role)) ?: [] as $part) {
+                $part = trim($part);
+                if ($part !== '') {
+                    $allowed[] = $part;
+                }
+            }
+        }
 
         $user = auth()->user();
+        $userRoleName = strtolower((string) $user->roleName());
 
-        // Resolve user's role name in a few common ways
-        $userRoleName = strtolower((string) optional($user->role)->name);
-        if ($userRoleName && in_array($userRoleName, $allowed, true)) {
+        if ($userRoleName !== '' && in_array($userRoleName, $allowed, true)) {
             return $next($request);
         }
 
-        // If the user has a direct `role` attribute (string column)
-        $userRoleAttr = strtolower((string) ($user->role ?? ''));
-        if ($userRoleAttr && in_array($userRoleAttr, $allowed, true)) {
-            return $next($request);
-        }
-
-        // Fallback: check by role_id mappings used elsewhere in this app
         $roleId = (int) ($user->role_id ?? 0);
         $roleMap = [
             'cashier' => [3],
             'supper admin' => [1],
-            'admin' => [1,2],
+            'admin' => [1, 2],
             'inventory' => [4],
         ];
 
-        foreach ($allowed as $a) {
-            if (isset($roleMap[$a]) && in_array($roleId, $roleMap[$a], true)) {
+        foreach ($allowed as $allowedRole) {
+            if (isset($roleMap[$allowedRole]) && in_array($roleId, $roleMap[$allowedRole], true)) {
                 return $next($request);
             }
         }

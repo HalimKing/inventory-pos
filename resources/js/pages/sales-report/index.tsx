@@ -13,7 +13,7 @@ import {
   useReactTable,
   VisibilityState,
 } from "@tanstack/react-table"
-import { ArrowUpDown, ChevronDown, MoreHorizontal, Filter, X, Plus, TrendingUp, Download, Calendar, BarChart3, Users, DollarSign, Package, CreditCard, Receipt, Printer, Eye, FileText, ShoppingCart, User, Clock, CheckCircle, XCircle, AlertCircle } from "lucide-react"
+import { ArrowUpDown, ChevronDown, MoreHorizontal, Filter, X, Plus, TrendingUp, Download, Calendar, BarChart3, Users, DollarSign, Package, CreditCard, Receipt, Printer, Eye, FileText, ShoppingCart, User, Clock, CheckCircle, XCircle, AlertCircle, RotateCcw, Loader2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -44,6 +44,8 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 // import { DatePicker } from "@/components/ui/date-picker"
 import AppLayout from '@/layouts/app-layout';
@@ -51,6 +53,7 @@ import { Head, usePage } from '@inertiajs/react';
 import { BreadcrumbItem } from '@/types';
 import axios from "axios"
 import { Company } from "@/types"
+import { toast } from "react-toastify"
 
 export type SalesRecord = {
   id: string
@@ -127,6 +130,15 @@ interface Transaction {
   notes?: string
   customerPhone?: string
   customerAddress?: string
+}
+
+interface RefundLineItem {
+  id: number
+  productName: string
+  quantity: number
+  refunded_quantity?: number
+  price: number
+  subtotal: number
 }
 
 type TopProductsData = {
@@ -553,8 +565,15 @@ const SalesReportPage = ({topProductsData, salesByCategoryData, company}: SalesR
                         margin: 0 auto;
                         transform: translateY(0);
                       }
-                      .button-container {
+                      .button-container,
+                      .print-btn,
+                      .close-btn {
                         display: none !important;
+                        visibility: hidden !important;
+                        height: 0 !important;
+                        margin: 0 !important;
+                        padding: 0 !important;
+                        overflow: hidden !important;
                       }
                     }
                     
@@ -770,13 +789,13 @@ const SalesReportPage = ({topProductsData, salesByCategoryData, company}: SalesR
                     <div class="footer">
                     ${companySettings.return_policy ? `<p style="margin: 5px 0;">Return Policy: ${companySettings.return_policy}</p>` : ''}
                     </div>
-
-                    <!-- Print Buttons (Hidden when printing) -->
-                    <div class="button-container">
-                      <button class="print-btn" onclick="window.print()">Print Receipt</button>
-                      <button class="close-btn" onclick="window.close()">Close</button>
-                    </div>
                   </div>
+
+                    <!-- Print Buttons (screen only — hidden when printing) -->
+                    <div class="button-container no-print">
+                      <button type="button" class="print-btn" onclick="window.print()">Print Receipt</button>
+                      <button type="button" class="close-btn" onclick="window.close()">Close</button>
+                    </div>
                   
                   <script>
                     setTimeout(() => {
@@ -882,9 +901,7 @@ const SalesReportPage = ({topProductsData, salesByCategoryData, company}: SalesR
               {transaction.status === "completed" && (
                 <DropdownMenuItem
                   className="text-red-600"
-                  onClick={() => {
-                    console.log("Refund transaction:", transaction.transactionId)
-                  }}
+                  onClick={() => void openRefundDialog(transaction)}
                 >
                   Process Refund
                 </DropdownMenuItem>
@@ -915,6 +932,13 @@ const SalesReportPage = ({topProductsData, salesByCategoryData, company}: SalesR
   const [sales, setSales] = React.useState<SalesRecord[]>([])
   const [selectedTransaction, setSelectedTransaction] = React.useState<Transaction | null>(null)
   const [showTransactionModal, setShowTransactionModal] = React.useState(false)
+  const [refundOpen, setRefundOpen] = React.useState(false)
+  const [refundReason, setRefundReason] = React.useState("")
+  const [refundQuantity, setRefundQuantity] = React.useState<Record<string, string>>({})
+  const [refundSubmitting, setRefundSubmitting] = React.useState(false)
+  const [refundItems, setRefundItems] = React.useState<RefundLineItem[]>([])
+  const [refundItemsLoading, setRefundItemsLoading] = React.useState(false)
+  const [refundTransaction, setRefundTransaction] = React.useState<Transaction | null>(null)
 
   // Sales details
   const salesDetails = async () => {
@@ -926,6 +950,95 @@ const SalesReportPage = ({topProductsData, salesByCategoryData, company}: SalesR
     salesDetails();
     transactions()
   }, [])
+
+  const openRefundDialog = async (transaction: Transaction) => {
+    setRefundTransaction(transaction)
+    setRefundReason("")
+    setRefundQuantity({})
+    setRefundItems([])
+    setRefundItemsLoading(true)
+    setRefundOpen(true)
+
+    try {
+      const { data } = await axios.get<RefundLineItem[]>(`/admin/api/sales/transactions/${transaction.saleId}/sale-items`)
+      const mappedItems = data.map((item) => {
+        const quantity = Number(item.quantity ?? 0)
+        const refundedQuantity = Number(item.refunded_quantity ?? 0)
+        const availableQuantity = Math.max(0, quantity - refundedQuantity)
+
+        return {
+          id: item.id,
+          productName: item.productName ?? item.product_name ?? 'Unknown product',
+          quantity: availableQuantity,
+          refunded_quantity: refundedQuantity,
+          price: Number(item.price ?? 0),
+          subtotal: Number(item.subtotal ?? item.total_amount ?? 0),
+        }
+      })
+
+      setRefundItems(mappedItems)
+      setRefundQuantity(
+        Object.fromEntries(mappedItems.map((item) => [String(item.id), String(item.quantity)])),
+      )
+    } catch {
+      toast.error('Unable to load transaction items for refund.')
+      setRefundOpen(false)
+    } finally {
+      setRefundItemsLoading(false)
+    }
+  }
+
+  const submitRefund = async () => {
+    if (!refundTransaction) {
+      return
+    }
+
+    const items = refundItems
+      .map((item) => {
+        const quantity = Number(refundQuantity[String(item.id)] ?? 0)
+        if (!quantity || quantity <= 0) {
+          return null
+        }
+
+        return {
+          sale_item_id: item.id,
+          quantity,
+        }
+      })
+      .filter(Boolean)
+
+    if (items.length === 0) {
+      toast.error('Select at least one item to refund.')
+      return
+    }
+
+    setRefundSubmitting(true)
+
+    try {
+      const { data } = await axios.post(`/admin/api/sales/transactions/${refundTransaction.saleId}/refund`, {
+        reason: refundReason.trim() || undefined,
+        items,
+      })
+
+      if (data.success) {
+        toast.success(data.message ?? 'Refund processed successfully.')
+        setRefundOpen(false)
+        setRefundReason("")
+        setRefundQuantity({})
+        setRefundItems([])
+        await transactions()
+      } else {
+        toast.error(data.message ?? 'Failed to process refund.')
+      }
+    } catch (error: unknown) {
+      const message = axios.isAxiosError(error) && error.response?.data?.message
+        ? String(error.response.data.message)
+        : 'Failed to process refund.'
+      toast.error(message)
+    } finally {
+      setRefundSubmitting(false)
+    }
+  }
 
   // Transactions
   const transactions = async () => {
@@ -1551,6 +1664,81 @@ const SalesReportPage = ({topProductsData, salesByCategoryData, company}: SalesR
               </Button>
             </div>
           </div>
+
+          <Dialog open={refundOpen} onOpenChange={setRefundOpen}>
+            <DialogContent className="max-w-lg">
+              <DialogHeader>
+                <DialogTitle>Process Refund</DialogTitle>
+                <DialogDescription>
+                  Choose the quantity to refund and add an optional reason.
+                </DialogDescription>
+              </DialogHeader>
+
+              {refundItemsLoading ? (
+                <div className="space-y-3 py-4">
+                  <div className="h-4 w-full animate-pulse rounded bg-muted" />
+                  <div className="h-4 w-3/4 animate-pulse rounded bg-muted" />
+                  <div className="h-4 w-1/2 animate-pulse rounded bg-muted" />
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="admin-refund-reason">Reason (optional)</Label>
+                    <Input
+                      id="admin-refund-reason"
+                      placeholder="Customer requested a refund"
+                      value={refundReason}
+                      onChange={(event) => setRefundReason(event.target.value)}
+                    />
+                  </div>
+
+                  <div className="space-y-3 rounded-md border p-3">
+                    {refundItems.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">No refundable items found for this transaction.</p>
+                    ) : (
+                      refundItems.map((item) => (
+                        <div key={item.id} className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="font-medium">{item.productName}</p>
+                            <p className="text-sm text-muted-foreground">
+                              Available: {item.quantity}
+                            </p>
+                          </div>
+                          <Input
+                            type="number"
+                            min="0"
+                            max={item.quantity}
+                            value={refundQuantity[String(item.id)] ?? ""}
+                            onChange={(event) =>
+                              setRefundQuantity((current) => ({
+                                ...current,
+                                [String(item.id)]: event.target.value,
+                              }))
+                            }
+                            className="w-24"
+                          />
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setRefundOpen(false)}>
+                  Cancel
+                </Button>
+                <Button onClick={() => void submitRefund()} disabled={refundSubmitting || refundItemsLoading}>
+                  {refundSubmitting ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <RotateCcw className="mr-2 h-4 w-4" />
+                  )}
+                  Process Refund
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </TabsContent>
 
         <TabsContent value="details" className="space-y-4">

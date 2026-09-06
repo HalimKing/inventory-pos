@@ -47,7 +47,18 @@ class User extends Authenticatable
 
     public function roleName(): ?string
     {
-        return $this->role?->name;
+        return $this->role?->name ?? $this->resolveRoleNameFromId();
+    }
+
+    private function resolveRoleNameFromId(): ?string
+    {
+        return match ((int) ($this->role_id ?? 0)) {
+            1 => 'supper admin',
+            2 => 'admin',
+            3 => 'cashier',
+            4 => 'inventory',
+            default => null,
+        };
     }
 
     public function hasRole(RoleName|string ...$roles): bool
@@ -73,6 +84,60 @@ class User extends Authenticatable
     public function isAdminUser(): bool
     {
         return $this->hasRole(RoleName::SuperAdmin, RoleName::Admin);
+    }
+
+    public function homeRouteName(): string
+    {
+        return match (strtolower((string) $this->roleName())) {
+            'cashier' => 'cashier.dashboard',
+            'inventory' => 'admin.products.index',
+            default => 'admin.dashboard',
+        };
+    }
+
+    public function homePath(): string
+    {
+        return route($this->homeRouteName(), absolute: false);
+    }
+
+    public function canAccessIntendedUrl(string $url): bool
+    {
+        $path = parse_url($url, PHP_URL_PATH);
+        if (! is_string($path) || $path === '') {
+            $path = $url;
+        }
+
+        $path = '/'.ltrim($path, '/');
+
+        if ($path === '/dashboard') {
+            return true;
+        }
+
+        return match (strtolower((string) $this->roleName())) {
+            'cashier' => $this->pathStartsWith($path, ['/cashier', '/settings']),
+            'inventory' => $this->pathStartsWith($path, [
+                '/admin/products',
+                '/admin/categories',
+                '/admin/suppliers',
+                '/settings',
+            ]),
+            'supper admin', 'admin' => $this->pathStartsWith($path, ['/admin', '/settings']),
+            default => false,
+        };
+    }
+
+    /**
+     * @param  list<string>  $prefixes
+     */
+    private function pathStartsWith(string $path, array $prefixes): bool
+    {
+        foreach ($prefixes as $prefix) {
+            if ($path === $prefix || str_starts_with($path, $prefix.'/')) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

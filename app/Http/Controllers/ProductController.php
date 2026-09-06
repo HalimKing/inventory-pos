@@ -7,6 +7,7 @@ use App\Models\Product;
 use App\Models\ProductBatch;
 use App\Enums\AuditModule;
 use App\Services\AuditLogger;
+use App\Services\StockService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -15,6 +16,7 @@ use Inertia\Inertia;
 
 class ProductController extends Controller
 {
+    public function __construct(private readonly StockService $stockService) {}
     /**
      * Display a listing of the resource.
      */
@@ -114,6 +116,12 @@ class ProductController extends Controller
                 createBatchOnDelta: true,
             );
 
+            $this->stockService->recordInitialStock(
+                product: $product->fresh(),
+                quantity: (int) $validated['totalQuantity'],
+                user: $request->user(),
+            );
+
             DB::commit();
 
             AuditLogger::record(
@@ -173,7 +181,6 @@ class ProductController extends Controller
             'category' => 'required|integer|max:255|exists:categories,id',
             'supplier' => 'required|integer|max:255|exists:suppliers,id',
             'barcode' => 'nullable|string|max:100|unique:products,barcode,'.$product->id,
-            'totalQuantity' => 'required|integer|min:0',
             'sellingPrice' => 'required|numeric|min:1|max:1000000.00',
             'costPrice' => 'required|numeric|min:1|max:10000000.00',
             'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
@@ -193,7 +200,7 @@ class ProductController extends Controller
                 ->withErrors(['trackBatch' => 'Batch tracking requires expiry tracking to be enabled.']);
         }
 
-        if ($hasExpiry && empty($validated['expiryDate'])) {
+        if ($hasExpiry && ! $trackBatch && empty($validated['expiryDate']) && empty($product->expiry_date)) {
             return redirect()->route('admin.products.index')
                 ->withErrors(['expiryDate' => 'Expiry date is required when expiry tracking is enabled.']);
         }
@@ -201,27 +208,20 @@ class ProductController extends Controller
         DB::beginTransaction();
 
         try {
-            $previousTotal = (int) $product->total_quantity;
-            $requestedTotal = (int) $validated['totalQuantity'];
-
             $product->name = $validated['name'];
             $product->category_id = $validated['category'];
             $product->supplier_id = $validated['supplier'];
             $product->barcode = $validated['barcode'] ?? $product->barcode;
             $product->selling_price = (float) $validated['sellingPrice'];
             $product->cost_price = (float) $validated['costPrice'];
-            $product->expiry_date = $hasExpiry && ! $trackBatch ? $validated['expiryDate'] : null;
+            $product->expiry_date = $hasExpiry && ! $trackBatch
+                ? ($validated['expiryDate'] ?? $product->expiry_date)
+                : null;
             $product->has_expiry = $hasExpiry;
             $product->track_batch = $trackBatch;
             $product->track_serial = $trackSerial;
             $product->profit = $product->selling_price - $product->cost_price;
             $product->reorder_level = (int) $validated['reorderLevel'];
-
-            if (! $trackBatch) {
-                $delta = $requestedTotal - $previousTotal;
-                $product->quantity_left = max(0, (int) $product->quantity_left + $delta);
-                $product->total_quantity = $requestedTotal;
-            }
 
             if ($request->hasFile('image')) {
                 $this->deleteProductImageIfExists($product->product_image);
@@ -238,11 +238,12 @@ class ProductController extends Controller
                 $product->save();
             }
 
+            // Product edits must not change stock levels — use Add Stock for restocks.
             $this->syncStockStorage(
                 product: $product,
-                requestedQuantity: $requestedTotal,
-                expiryDate: $validated['expiryDate'] ?? null,
-                createBatchOnDelta: true,
+                requestedQuantity: (int) $product->quantity_left,
+                expiryDate: $validated['expiryDate'] ?? $product->expiry_date?->toDateString(),
+                createBatchOnDelta: false,
             );
 
             $product->total_profit = $product->profit * (int) $product->total_quantity;
@@ -388,6 +389,68 @@ class ProductController extends Controller
         return response()->json($this->fetchProducts());
     }
 
+    public function addStock(Request $request, Product $product)
+    {
+        $this->authorize('addStock', $product);
+
+        $validated = $request->validate([
+            'quantity' => 'required|integer|min:1|max:1000000',
+            'notes' => 'nullable|string|max:500',
+            'expiryDate' => 'nullable|date',
+            'batchNumber' => 'nullable|string|max:255',
+        ]);
+
+        $result = $this->stockService->addStock(
+            product: $product,
+            quantity: (int) $validated['quantity'],
+            user: $request->user(),
+            notes: $validated['notes'] ?? null,
+            expiryDate: $validated['expiryDate'] ?? null,
+            batchNumber: $validated['batchNumber'] ?? null,
+        );
+
+        $freshProduct = $result['product'];
+
+        return response()->json([
+            'message' => "Added {$validated['quantity']} unit(s) to {$freshProduct->name}.",
+            'product' => [
+                'id' => $freshProduct->id,
+                'quantityLeft' => (int) $freshProduct->quantity_left,
+                'totalQuantity' => (int) $freshProduct->total_quantity,
+                'quantitySold' => (int) $freshProduct->quantity_sold,
+                'batches' => $freshProduct->productBatches
+                    ->sortBy('expiry_date')
+                    ->values()
+                    ->map(fn ($batch) => [
+                        'id' => $batch->id,
+                        'batchNumber' => $batch->batch_number,
+                        'quantity' => $batch->quantity,
+                        'expiryDate' => $batch->expiry_date,
+                    ]),
+            ],
+            'movement' => [
+                'id' => $result['movement']->id,
+                'type' => $result['movement']->type->value,
+                'quantityDelta' => $result['movement']->quantity_delta,
+                'quantityBefore' => $result['movement']->quantity_before,
+                'quantityAfter' => $result['movement']->quantity_after,
+                'createdAt' => $result['movement']->created_at?->toIso8601String(),
+            ],
+        ]);
+    }
+
+    public function stockMovements(Product $product)
+    {
+        $this->authorize('viewStockHistory', $product);
+
+        return response()->json([
+            'productId' => $product->id,
+            'productName' => $product->name,
+            'quantityLeft' => (int) $product->quantity_left,
+            'movements' => $this->stockService->historyForProduct($product),
+        ]);
+    }
+
     public function storeBatch(Request $request, Product $product)
     {
         $this->authorize('manageBatches', $product);
@@ -404,23 +467,23 @@ class ProductController extends Controller
             'expiryDate' => 'required|date',
         ]);
 
-        DB::beginTransaction();
-
         try {
-            ProductBatch::create([
-                'product_id' => $product->id,
-                'batch_number' => $validated['batchNumber'],
-                'quantity' => (int) $validated['quantity'],
-                'expiry_date' => $validated['expiryDate'],
+            $result = $this->stockService->addStock(
+                product: $product,
+                quantity: (int) $validated['quantity'],
+                user: $request->user(),
+                notes: 'Batch stock added',
+                expiryDate: $validated['expiryDate'],
+                batchNumber: $validated['batchNumber'],
+            );
+
+            return response()->json([
+                'message' => 'Batch added successfully.',
+                'batch' => $result['batch'],
             ]);
-
-            $this->recalculateBatchTrackedStock($product);
-
-            DB::commit();
-
-            return response()->json(['message' => 'Batch added successfully.']);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            throw $e;
         } catch (\Throwable $e) {
-            DB::rollBack();
             Log::error($e->getMessage());
 
             return response()->json([

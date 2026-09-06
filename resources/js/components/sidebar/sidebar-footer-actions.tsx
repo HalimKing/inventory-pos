@@ -20,8 +20,7 @@ export const SidebarFooterActions = memo(function SidebarFooterActions() {
         SharedData & { company?: Company | null }
     >().props;
     const { isMobile, setOpenMobile } = useSidebar();
-    const roleId = Number(auth.user.role_id ?? 0);
-    const settingsHref = getSettingsHref(roleId);
+    const settingsHref = getSettingsHref(auth.user);
     const supportEmail =
         (company as Company | null)?.email ?? 'support@mallpos.com';
     const helpHref = `mailto:${supportEmail}?subject=Mall%20POS%20Support`;

@@ -60,4 +60,9 @@ class Product extends Model
     {
         return $this->hasMany(ProductBatch::class);
     }
+
+    public function stockMovements(): HasMany
+    {
+        return $this->hasMany(StockMovement::class);
+    }
 }

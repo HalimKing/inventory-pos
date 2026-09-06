@@ -1,10 +1,11 @@
 import { useSyncManager } from '@/lib/useSyncManager';
+import { resolveRoleName } from '@/lib/sidebar-utils';
 import { SharedData } from '@/types';
 import { usePage } from '@inertiajs/react';
 import { Bounce, ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
-const OFFLINE_SYNC_ROLE_IDS = new Set([1, 2, 3]);
+const OFFLINE_SYNC_ROLES = new Set(['supper admin', 'admin', 'cashier']);
 
 function OfflineSyncBridgeInner() {
     useSyncManager();
@@ -13,8 +14,7 @@ function OfflineSyncBridgeInner() {
 
 export function OfflineSyncBridge() {
     const { auth } = usePage<SharedData>().props;
-    const roleId = Number(auth.user?.role_id ?? 0);
-    const canSyncOfflineSales = OFFLINE_SYNC_ROLE_IDS.has(roleId);
+    const canSyncOfflineSales = OFFLINE_SYNC_ROLES.has(resolveRoleName(auth.user));
 
     if (!canSyncOfflineSales) {
         return null;

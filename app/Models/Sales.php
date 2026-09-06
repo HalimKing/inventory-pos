@@ -23,6 +23,11 @@ class Sales extends Model
         'discount_amount',
         'grand_total',
         'status',
+        'is_refund',
+        'refund_of_sale_id',
+        'refund_reason',
+        'refunded_amount',
+        'refunded_at',
         'offline_sync_id',
         'synced_at',
     ];

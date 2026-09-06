@@ -22,6 +22,32 @@ test('users can authenticate using the login screen', function () {
     $response->assertRedirect(route('dashboard', absolute: false));
 });
 
+test('inventory staff can authenticate and reach the product catalog', function () {
+    $user = User::factory()->withoutTwoFactor()->create(['role_id' => 4]);
+
+    $this->post(route('login.store'), [
+        'email' => $user->email,
+        'password' => 'password',
+    ])->assertRedirect(route('dashboard', absolute: false));
+
+    $this->get(route('dashboard'))
+        ->assertRedirect(route('admin.products.index'));
+
+    $this->get(route('admin.products.index'))
+        ->assertOk();
+});
+
+test('inventory staff are not sent to the admin dashboard after login', function () {
+    $user = User::factory()->withoutTwoFactor()->create(['role_id' => 4]);
+
+    $this->get('/admin/dashboard');
+
+    $this->post(route('login.store'), [
+        'email' => $user->email,
+        'password' => 'password',
+    ])->assertRedirect(route('admin.products.index', absolute: false));
+});
+
 test('users with two factor enabled are redirected to two factor challenge', function () {
     if (! Features::canManageTwoFactorAuthentication()) {
         $this->markTestSkipped('Two-factor authentication is not enabled.');

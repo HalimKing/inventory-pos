@@ -6,6 +6,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useHeaderNotifications } from '@/hooks/use-header-notifications';
+import { resolveRoleName } from '@/lib/sidebar-utils';
 import { cn } from '@/lib/utils';
 import { type SharedData } from '@/types';
 import { Link, usePage } from '@inertiajs/react';
@@ -46,12 +47,12 @@ export function HeaderNotifications() {
         clearAll,
     } = useHeaderNotifications();
     const { auth } = usePage<SharedData>().props;
-    const roleId = Number(auth.user.role_id ?? 0);
+    const role = resolveRoleName(auth.user);
 
     const activityLink =
-        roleId === 3
+        role === 'cashier'
             ? { href: '/cashier/transactions', label: 'View transactions' }
-            : roleId === 4
+            : role === 'inventory'
               ? { href: '/admin/products', label: 'View inventory' }
               : { href: '/admin/system-logs', label: 'View system activity' };
 

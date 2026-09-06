@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Exceptions\StockValidationException;
+use App\Http\Requests\RefundTransactionRequest;
 use App\Http\Requests\StoreTransactionRequest;
 use App\Models\CompanySetting;
 use App\Models\Product;
@@ -182,6 +183,44 @@ class SalesController extends Controller
                 'success' => false,
                 'message' => 'Transaction failed. Please try again.',
                 'error' => config('app.debug') ? $e->getMessage() : 'Internal server error',
+            ], 500);
+        }
+    }
+
+    public function refundTransaction(RefundTransactionRequest $request, Sales $sale): JsonResponse
+    {
+        $this->authorize('refund', Sales::class);
+
+        DB::beginTransaction();
+
+        try {
+            $refundSale = $this->salesService->refundSale($sale, $request->validated(), Auth::user());
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Refund processed successfully.',
+                'refund_id' => $refundSale->id,
+                'refund_transaction_id' => $refundSale->transaction_id,
+            ]);
+        } catch (\InvalidArgumentException $e) {
+            DB::rollBack();
+
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Refund failed: '.$e->getMessage(), [
+                'sale_id' => $sale->id,
+                'user_id' => Auth::id(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Refund failed. Please try again.',
             ], 500);
         }
     }

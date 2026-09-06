@@ -16,6 +16,8 @@ class SaleItem extends Model
         'category_id',
         'product_name',
         'quantity',
+        'refunded_quantity',
+        'refund_amount',
         'price',
         'total_amount',
         'quantity_left',

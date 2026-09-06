@@ -46,6 +46,7 @@ import {
     Mail,
     Printer,
     Receipt,
+    RotateCcw,
     Search,
 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
@@ -128,6 +129,10 @@ export default function CashierTransactionsPage({
     const [emailOpen, setEmailOpen] = useState(false);
     const [emailAddress, setEmailAddress] = useState('');
     const [emailSending, setEmailSending] = useState(false);
+    const [refundOpen, setRefundOpen] = useState(false);
+    const [refundReason, setRefundReason] = useState('');
+    const [refundQuantity, setRefundQuantity] = useState<Record<string, string>>({});
+    const [refundSubmitting, setRefundSubmitting] = useState(false);
     const [actionLoading, setActionLoading] = useState<string | null>(null);
 
     useEffect(() => {
@@ -240,6 +245,70 @@ export default function CashierTransactionsPage({
             toast.error(message);
         } finally {
             setEmailSending(false);
+        }
+    };
+
+    const openRefundDialog = () => {
+        if (!selectedTransaction) {
+            return;
+        }
+
+        const defaults = Object.fromEntries(
+            selectedTransaction.items.map((item) => [item.id, String(item.quantity)]),
+        );
+        setRefundQuantity(defaults);
+        setRefundReason('');
+        setDetailOpen(false);
+        setRefundOpen(true);
+    };
+
+    const submitRefund = async () => {
+        if (!selectedTransaction) {
+            return;
+        }
+
+        const items = selectedTransaction.items
+            .map((item) => {
+                const quantity = Number(refundQuantity[item.id] ?? 0);
+                if (!quantity || quantity <= 0) {
+                    return null;
+                }
+
+                return {
+                    sale_item_id: item.id,
+                    quantity,
+                };
+            })
+            .filter(Boolean);
+
+        if (items.length === 0) {
+            toast.error('Select at least one item to refund.');
+            return;
+        }
+
+        setRefundSubmitting(true);
+        try {
+            const { data } = await axios.post(`/cashier/api/transactions/${selectedTransaction.id}/refund`, {
+                reason: refundReason.trim() || undefined,
+                items,
+            });
+
+            if (data.success) {
+                toast.success(data.message ?? 'Refund processed.');
+                setRefundOpen(false);
+                setRefundReason('');
+                await fetchTransactions();
+            } else {
+                toast.error(data.message ?? 'Failed to process refund.');
+            }
+        } catch (error: unknown) {
+            const message =
+                axios.isAxiosError(error) && error.response?.data?.message
+                    ? String(error.response.data.message)
+                    : 'Failed to process refund.';
+            toast.error(message);
+        } finally {
+            setRefundSubmitting(false);
         }
     };
 
@@ -535,12 +604,76 @@ export default function CashierTransactionsPage({
                                 )}
                                 Download PDF
                             </Button>
+                            <Button variant="outline" onClick={openRefundDialog}>
+                                <RotateCcw className="mr-2 h-4 w-4" />
+                                Refund
+                            </Button>
                             <Button onClick={() => setEmailOpen(true)}>
                                 <Mail className="mr-2 h-4 w-4" />
                                 Email Receipt
                             </Button>
                         </DialogFooter>
                     )}
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={refundOpen} onOpenChange={setRefundOpen}>
+                <DialogContent className="max-w-lg">
+                    <DialogHeader>
+                        <DialogTitle>Process Refund</DialogTitle>
+                        <DialogDescription>
+                            Choose the quantity to refund and add an optional reason.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                        <div className="space-y-2">
+                            <Label htmlFor="refund-reason">Reason (optional)</Label>
+                            <Input
+                                id="refund-reason"
+                                placeholder="Customer requested a refund"
+                                value={refundReason}
+                                onChange={(e) => setRefundReason(e.target.value)}
+                            />
+                        </div>
+                        <div className="space-y-3 rounded-md border p-3">
+                            {selectedTransaction?.items.map((item) => (
+                                <div key={item.id} className="flex items-center justify-between gap-3">
+                                    <div>
+                                        <p className="font-medium">{item.product_name}</p>
+                                        <p className="text-sm text-muted-foreground">
+                                            Available: {item.quantity}
+                                        </p>
+                                    </div>
+                                    <Input
+                                        type="number"
+                                        min="0"
+                                        max={item.quantity}
+                                        value={refundQuantity[item.id] ?? ''}
+                                        onChange={(e) =>
+                                            setRefundQuantity((current) => ({
+                                                ...current,
+                                                [item.id]: e.target.value,
+                                            }))
+                                        }
+                                        className="w-24"
+                                    />
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setRefundOpen(false)}>
+                            Cancel
+                        </Button>
+                        <Button onClick={submitRefund} disabled={refundSubmitting}>
+                            {refundSubmitting ? (
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            ) : (
+                                <RotateCcw className="mr-2 h-4 w-4" />
+                            )}
+                            Process Refund
+                        </Button>
+                    </DialogFooter>
                 </DialogContent>
             </Dialog>
 

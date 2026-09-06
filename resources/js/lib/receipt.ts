@@ -86,8 +86,21 @@ export function buildReceiptHtml(
       .total-line { font-weight: bold; border-top: 2px dashed #000; padding-top: 8px; margin-top: 8px; }
       .footer, .thank-you { text-align: center; margin-top: 15px; }
       .button-container { text-align: center; margin-top: 20px; }
-      .print-btn { padding: 8px 16px; cursor: pointer; }
-      @media print { .button-container { display: none; } }
+      .print-btn, .close-btn { padding: 8px 16px; cursor: pointer; margin: 0 4px; }
+      @media print {
+        .button-container,
+        .print-btn,
+        .close-btn,
+        .no-print {
+          display: none !important;
+          visibility: hidden !important;
+          height: 0 !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          overflow: hidden !important;
+        }
+        .receipt-container { box-shadow: none !important; }
+      }
     </style>
   </head>
   <body>
@@ -112,9 +125,10 @@ export function buildReceiptHtml(
       <div class="line"><span>Payment:</span><span>${transaction.payment_method.toUpperCase()}</span></div>
       <div class="thank-you">${thankYou}</div>
       ${companySettings?.return_policy ? `<div class="footer">${companySettings.return_policy}</div>` : ''}
-      <div class="button-container">
-        <button class="print-btn" onclick="window.print()">Print Receipt</button>
-      </div>
+    </div>
+    <div class="button-container no-print">
+      <button type="button" class="print-btn" onclick="window.print()">Print Receipt</button>
+      <button type="button" class="close-btn" onclick="window.close()">Close</button>
     </div>
   </body>
 </html>`;

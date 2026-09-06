@@ -2,17 +2,22 @@
 
 namespace App\Services;
 
+use App\Enums\AuditModule;
+use App\Enums\StockMovementType;
 use App\Exceptions\StockValidationException;
 use App\Models\Inventory;
 use App\Models\Product;
 use App\Models\ProductBatch;
 use App\Models\SaleItem;
 use App\Models\Sales;
+use App\Models\User;
+use App\Services\AuditLogger;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
 
 class SalesService
 {
+    public function __construct(private readonly StockService $stockService) {}
     /**
      * @param  array<int, array<string, mixed>>  $items
      * @return array<int, string>
@@ -161,6 +166,203 @@ class SalesService
         return (int) ($product->inventory?->quantity ?? $product->quantity_left ?? 0);
     }
 
+    public function refundSale(Sales $sale, array $payload, User $user): Sales
+    {
+        if ($sale->is_refund) {
+            throw new \InvalidArgumentException('Refunds cannot be refunded again.');
+        }
+
+        if ($sale->status === 'refunded' || $sale->status === 'partially_refunded') {
+            throw new \InvalidArgumentException('This transaction has already been refunded.');
+        }
+
+        $items = $payload['items'] ?? [];
+        if ($items === []) {
+            throw new \InvalidArgumentException('At least one line item is required for a refund.');
+        }
+
+        $refundSale = new Sales;
+        $refundSale->transaction_id = 'RFD-'.uniqid('', false);
+        $refundSale->user_id = $user->id;
+        $refundSale->customer_name = $sale->customer_name;
+        $refundSale->sub_total = 0;
+        $refundSale->discount_amount = 0;
+        $refundSale->discount_percentage = 0;
+        $refundSale->grand_total = 0;
+        $refundSale->status = 'completed';
+        $refundSale->is_refund = true;
+        $refundSale->refund_of_sale_id = $sale->id;
+        $refundSale->refund_reason = $payload['reason'] ?? null;
+        $refundSale->amount_paid = 0;
+        $refundSale->change_amount = 0;
+        $refundSale->payment_method = $sale->payment_method;
+        $refundSale->save();
+
+        $refundAmount = 0.0;
+        $refundedItems = [];
+
+        foreach ($items as $itemPayload) {
+            $saleItem = $sale->saleItems()->find($itemPayload['sale_item_id'] ?? null);
+            if (! $saleItem) {
+                throw new \InvalidArgumentException('One of the selected items could not be found.');
+            }
+
+            $requestedQuantity = max(1, (int) ($itemPayload['quantity'] ?? 0));
+            $availableQuantity = max(0, (int) $saleItem->quantity - (int) $saleItem->refunded_quantity);
+            if ($requestedQuantity > $availableQuantity) {
+                throw new \InvalidArgumentException('Refund quantity exceeds the refundable quantity for one or more items.');
+            }
+
+            $refundLineAmount = round((float) $saleItem->price * $requestedQuantity, 2);
+            $refundAmount += $refundLineAmount;
+
+            $this->restoreInventoryForRefund(
+                productId: (string) $saleItem->product_id,
+                quantity: $requestedQuantity,
+                productBatchId: $saleItem->product_batch_id ? (string) $saleItem->product_batch_id : null,
+                user: $user,
+                sale: $refundSale,
+            );
+
+            $saleItem->refunded_quantity += $requestedQuantity;
+            $saleItem->refund_amount += $refundLineAmount;
+            $saleItem->save();
+
+            $refundedUnitProfit = $saleItem->quantity > 0
+                ? round(((float) $saleItem->profit / (int) $saleItem->quantity) * $requestedQuantity, 2)
+                : 0.0;
+
+            $refundSale->saleItems()->create([
+                'product_id' => $saleItem->product_id,
+                'product_batch_id' => $saleItem->product_batch_id,
+                'category_id' => $saleItem->category_id,
+                'product_name' => $saleItem->product_name,
+                'quantity' => -$requestedQuantity,
+                'refunded_quantity' => 0,
+                'refund_amount' => $refundLineAmount,
+                'price' => $saleItem->price,
+                'total_amount' => -$refundLineAmount,
+                'quantity_left' => 0,
+                'quantity_sold' => 0,
+                'profit' => -$refundedUnitProfit,
+                'expiry_date' => $saleItem->expiry_date,
+            ]);
+
+            $refundedItems[] = [
+                'product_id' => $saleItem->product_id,
+                'quantity' => $requestedQuantity,
+            ];
+        }
+
+        $sale->refresh();
+        $sale->status = (int) $sale->saleItems()->sum('refunded_quantity') >= (int) $sale->saleItems()->sum('quantity')
+            ? 'refunded'
+            : 'partially_refunded';
+        $sale->refunded_amount = round((float) $sale->refunded_amount + $refundAmount, 2);
+        $sale->refunded_at = now();
+        $sale->save();
+
+        $refundSale->sub_total = -$refundAmount;
+        $refundSale->grand_total = -$refundAmount;
+        $refundSale->amount_paid = -$refundAmount;
+        $refundSale->change_amount = 0;
+        $refundSale->save();
+
+        $this->refreshProductStockForRefund($refundedItems);
+
+        AuditLogger::record(
+            eventType: 'sales.refunded',
+            module: AuditModule::Sales,
+            description: 'Refund processed for sale '.$sale->transaction_id,
+            user: $user,
+            resourceType: Sales::class,
+            resourceId: $sale->id,
+            newValues: [
+                'refund_id' => $refundSale->id,
+                'refund_reason' => $refundSale->refund_reason,
+                'refund_amount' => $refundAmount,
+                'refunded_items' => $refundedItems,
+            ],
+        );
+
+        return $refundSale;
+    }
+
+    private function restoreInventoryForRefund(
+        string $productId,
+        int $quantity,
+        ?string $productBatchId,
+        User $user,
+        Sales $sale,
+    ): void {
+        $product = Product::findOrFail($productId);
+        $before = $this->stockService->availableQuantity($product);
+
+        if ($product->track_batch && $product->has_expiry) {
+            $batch = ProductBatch::query()->find($productBatchId);
+            if ($batch) {
+                $batch->quantity = (int) $batch->quantity + $quantity;
+                $batch->save();
+            }
+
+            $product->refresh();
+            $product->quantity_left = $this->availableStock($product);
+            $product->save();
+
+            $afterProduct = $product->fresh();
+            $this->stockService->recordMovement(
+                product: $afterProduct,
+                type: StockMovementType::Refund,
+                quantityDelta: $quantity,
+                quantityBefore: $before,
+                quantityAfter: $this->stockService->availableQuantity($afterProduct),
+                user: $user,
+                productBatchId: $batch?->id,
+                notes: 'Stock restored from refund',
+                referenceType: Sales::class,
+                referenceId: (string) $sale->id,
+            );
+
+            return;
+        }
+
+        $inventory = Inventory::query()->where('product_id', $product->id)->lockForUpdate()->first();
+        if ($inventory) {
+            $inventory->quantity = (int) $inventory->quantity + $quantity;
+            $inventory->save();
+        }
+
+        $product->refresh();
+        $product->quantity_left = $this->availableStock($product);
+        $product->save();
+
+        $afterProduct = $product->fresh(['inventory']);
+        $this->stockService->recordMovement(
+            product: $afterProduct,
+            type: StockMovementType::Refund,
+            quantityDelta: $quantity,
+            quantityBefore: $before,
+            quantityAfter: $this->stockService->availableQuantity($afterProduct),
+            user: $user,
+            notes: 'Stock restored from refund',
+            referenceType: Sales::class,
+            referenceId: (string) $sale->id,
+        );
+    }
+
+    private function refreshProductStockForRefund(array $refundedItems): void
+    {
+        foreach ($refundedItems as $refundedItem) {
+            $product = Product::find($refundedItem['product_id']);
+            if ($product) {
+                $product->refresh();
+                $product->load('inventory');
+                $product->quantity_left = $this->availableStock($product);
+                $product->save();
+            }
+        }
+    }
+
     /**
      * @param  array<string, mixed>  $item
      */
@@ -169,6 +371,7 @@ class SalesService
         $product = Product::with('inventory')->findOrFail($item['product_id']);
         $requestedQuantity = (int) $item['quantity'];
         $remaining = $requestedQuantity;
+        $before = $this->stockService->availableQuantity($product);
 
         if ($product->track_batch && $product->has_expiry) {
             $batches = ProductBatch::query()
@@ -197,6 +400,21 @@ class SalesService
                     'expiry_date' => $batch->expiry_date,
                     'line_quantity' => $requestedQuantity,
                 ]);
+
+                $this->stockService->recordMovement(
+                    product: $product,
+                    type: StockMovementType::Sale,
+                    quantityDelta: -$deductQty,
+                    quantityBefore: $before,
+                    quantityAfter: max(0, $before - $deductQty),
+                    user: $sale->user,
+                    productBatchId: $batch->id,
+                    notes: 'Sold via '.$sale->transaction_id,
+                    referenceType: Sales::class,
+                    referenceId: (string) $sale->id,
+                );
+
+                $before = max(0, $before - $deductQty);
             }
 
             $this->refreshProductStock($product, $requestedQuantity);
@@ -231,6 +449,20 @@ class SalesService
         ]);
 
         $this->refreshProductStock($product, $requestedQuantity);
+
+        $after = $this->stockService->availableQuantity($product->fresh(['inventory']));
+
+        $this->stockService->recordMovement(
+            product: $product,
+            type: StockMovementType::Sale,
+            quantityDelta: -$requestedQuantity,
+            quantityBefore: $before,
+            quantityAfter: $after,
+            user: $sale->user,
+            notes: 'Sold via '.$sale->transaction_id,
+            referenceType: Sales::class,
+            referenceId: (string) $sale->id,
+        );
     }
 
     /**
